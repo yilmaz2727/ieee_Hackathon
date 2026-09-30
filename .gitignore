@@ -1,0 +1,74 @@
+# İşletim sistemi
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE ve editör
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# Dart / Flutter
+.dart_tool/
+.pub/
+.pub-cache/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+coverage/
+**/doc/api/
+**/flutter/ephemeral/
+**/Flutter/ephemeral/
+app.*.symbols
+app.*.map
+
+# Android
+**/android/.gradle/
+**/android/captures/
+**/android/local.properties
+**/android/key.properties
+**/android/**/GeneratedPluginRegistrant.java
+
+# İmzalama dosyaları
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.mobileprovision
+
+# iOS / macOS
+**/Pods/
+**/.symlinks/
+**/DerivedData/
+**/xcuserdata/
+*.xcuserstate
+**/Flutter/Generated.xcconfig
+**/Flutter/flutter_export_environment.sh
+**/Flutter/.last_build_id
+**/Flutter/App.framework/
+**/Flutter/Flutter.framework/
+**/Flutter/Flutter.podspec
+**/Runner/GeneratedPluginRegistrant.*
+
+# Gizli ayarlar ve sunucu anahtarları
+.env
+.env.*
+!.env.example
+!.env.*.example
+/secrets/
+**/service-account*.json
+**/service_account*.json
+**/*firebase-adminsdk*.json
+
+# Loglar ve geçici dosyalar
+*.log
+*.tmp
+*.bak
+
+# Oluşturulan kurulum paketleri
+*.apk
+*.aab
+*.ipa

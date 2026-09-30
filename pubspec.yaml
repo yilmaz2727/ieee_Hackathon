@@ -1,0 +1,38 @@
+name: esma_game
+description: Esma ve dedesinin kitabıyla üç bölümlük su koruma macerası.
+publish_to: none
+version: 1.1.0+2
+environment:
+  sdk: '>=3.8.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  flame: ^1.35.1
+  shared_preferences: ^2.5.3
+  pdf: ^3.11.3
+  printing: ^5.14.2
+  flutter_map: ^8.2.2
+  latlong2: ^0.9.1
+  file_selector: ^1.0.3
+  image: ^4.5.4
+  url_launcher: ^6.3.2
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/fonts/
+    - assets/i18n/
+  fonts:
+    - family: StorySans
+      fonts:
+        - asset: assets/fonts/DejaVuSans.ttf
+        - asset: assets/fonts/DejaVuSans-Bold.ttf
+          weight: 700
+    - family: StorySerif
+      fonts:
+        - asset: assets/fonts/DejaVuSerif-Bold.ttf
+          weight: 700
