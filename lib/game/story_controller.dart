@@ -9,6 +9,8 @@ enum Scene {
   intro,
   cleanupFirst,
   firstResult,
+  differencePuzzle,
+  differenceResult,
   underwater,
   protection,
   protectionResult,
@@ -94,6 +96,10 @@ class StoryController extends ChangeNotifier {
   final Set<int> sources = {};
   final Set<int> found = {};
 
+  // Chapter 1 fark bulmacasında bulunan noktalar.
+  // Controller'da tutulduğu için ana menüye dönüp devam edildiğinde korunur.
+  final Set<int> differenceFound = {};
+
   // Independent visual restoration per location;
   // never a real water-quality measure.
   final List<double> waterClarity = [0, 0, 0];
@@ -153,6 +159,8 @@ class StoryController extends ChangeNotifier {
     Scene.intro ||
     Scene.cleanupFirst ||
     Scene.firstResult ||
+    Scene.differencePuzzle ||
+    Scene.differenceResult ||
     Scene.prevention ||
     Scene.cleanupSecond ||
     Scene.retry ||
@@ -287,6 +295,7 @@ class StoryController extends ChangeNotifier {
   void startNew() {
     sources.clear();
     found.clear();
+    differenceFound.clear();
 
     waste.clear();
 
@@ -325,7 +334,15 @@ class StoryController extends ChangeNotifier {
   // -------------------------------------------------
 
   void resumeChapter(int checkpoint) {
-    if (checkpoint == 4) {
+    // 6 = Chapter 1 fark bulmaca sonuç ekranı
+    // 5 = Chapter 1 fark bulmaca checkpoint'i
+    if (checkpoint == 6) {
+      pages.add(0);
+      go(Scene.differenceResult);
+    } else if (checkpoint == 5) {
+      pages.add(0);
+      go(Scene.differencePuzzle);
+    } else if (checkpoint == 4) {
       pages.addAll([0, 1, 2, 3]);
 
       replaying = true;
@@ -508,6 +525,17 @@ class StoryController extends ChangeNotifier {
       replaying = true;
 
       go(Scene.cleanupSecond);
+    }
+  }
+
+  // -------------------------------------------------
+  // CHAPTER 1 - FARK BULMACASI
+  // -------------------------------------------------
+
+  void markDifferenceFound(int index) {
+    if (scene != Scene.differencePuzzle || index < 0 || index >= 5) return;
+    if (differenceFound.add(index)) {
+      notifyListeners();
     }
   }
 

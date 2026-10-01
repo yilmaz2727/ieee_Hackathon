@@ -20,6 +20,10 @@ void main() {
     c.go(Scene.cleanupFirst);
     expect(c.chapter, 1);
     expect(c.location, tr('chapter.location.1'));
+    c.go(Scene.differencePuzzle);
+    expect(c.chapter, 1);
+    c.go(Scene.differenceResult);
+    expect(c.chapter, 1);
     c.go(Scene.protection);
     expect(c.chapter, 2);
     expect(c.location, tr('chapter.location.2'));
