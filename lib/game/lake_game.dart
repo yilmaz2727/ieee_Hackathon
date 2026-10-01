@@ -11,11 +11,6 @@ class LakeGame extends FlameGame {
   final StoryController story;
   @override
   Color backgroundColor() => const Color(0x00000000);
-  @override
-  void update(double dt) {
-    super.update(dt);
-    // Flame may call update(0) during layout; never notify Flutter here.
-  }
 
   @override
   void render(Canvas canvas) {

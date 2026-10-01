@@ -76,15 +76,17 @@ class _ImpactScreenState extends State<ImpactScreen> {
       );
       final file = await openFile(acceptedTypeGroups: [types]);
       if (file == null) return;
-      if (await file.length() > 12 * 1024 * 1024)
+      if (await file.length() > 12 * 1024 * 1024) {
         throw FormatException(tr('impact.maxSize'));
+      }
       if (!mounted) return;
       setState(() => busy = true);
       final prepared = await ImpactStore.preparePhoto(await file.readAsBytes());
       if (mounted) setState(() => photo = prepared);
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() => error = _localizedError(e, 'FormatException: '));
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }

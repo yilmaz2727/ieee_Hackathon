@@ -145,10 +145,14 @@ class ChapterThreeInspection extends StatelessWidget {
                 style: const TextStyle(color: ink, height: 1.6, fontSize: 13),
               ),
               const SizedBox(height: 12),
-              TextButton.icon(
-                onPressed: onOpenBook,
-                icon: const Icon(Icons.menu_book_rounded),
-                label: Text(tr('chapter3.research')),
+              TapDownButton(
+                onTap: onOpenBook,
+                sound: TapDownButton.bookSound,
+                builder: (pressed) => TextButton.icon(
+                  onPressed: pressed,
+                  icon: const Icon(Icons.menu_book_rounded),
+                  label: Text(tr('chapter3.research')),
+                ),
               ),
               const SizedBox(height: 8),
               StoryButton(

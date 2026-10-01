@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../../../audio_manager.dart';
 import '../../../game/story_controller.dart';
 import '../../../localization/app_localizations.dart';
 import '../../../ui/widgets.dart';
@@ -35,6 +36,10 @@ class _ChapterOneState extends State<ChapterOne> {
   @override
   void initState() {
     super.initState();
+
+    // "Temizliğe başlayalım" / "Tekrar oyna" ile oyun açılır: hikâye müziği
+    // yerini oyun müziğine bırakır.
+    AudioManager.instance.playBGM('ch1_oyun_bg.mp3');
 
     widget.story.waterClarity[0] = 0;
     widget.story.visibleClarity[0] = 0;
@@ -117,6 +122,11 @@ class _ChapterOneState extends State<ChapterOne> {
 
     final item = matches.first;
 
+    // Efektler ayrı oyuncularda çalar; oyun müziği kesilmez.
+    AudioManager.instance.playEffect(
+      item.kind == bin ? 'ch1_dogru_kutu.mp3' : 'ch1_yanlis_kutu.mp3',
+    );
+
     setState(() {
       if (item.kind != bin) {
         message = tr('chapter1.message.wrongBin');
@@ -138,6 +148,12 @@ class _ChapterOneState extends State<ChapterOne> {
     finished = true;
     timer.cancel();
     clock.stop();
+
+    // Oyun müziği durur, sonuç sesi çalar, ardından menü müziği gelir.
+    AudioManager.instance.playJingleThenBGM(
+      collected >= 10 ? 'kazandin.mp3' : 'kaybettin.mp3',
+      'ana_menu_bg.mp3',
+    );
 
     widget.story.firstCollected = collected;
     widget.story.firstIncoming = nextId;
@@ -199,6 +215,9 @@ class _ChapterOneState extends State<ChapterOne> {
                 child: Draggable<int>(
                   data: item.id,
                   maxSimultaneousDrags: 1,
+                  onDragStarted: () => AudioManager.instance.playEffect(
+                    'ch1_nesne_tutma_effect.mp3',
+                  ),
                   feedback: Material(
                     color: Colors.transparent,
                     child: wastePicture(item.kind),

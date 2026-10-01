@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import '../audio_manager.dart';
 import '../localization/app_localizations.dart';
 
 enum Scene {
@@ -334,6 +335,17 @@ class StoryController extends ChangeNotifier {
   // -------------------------------------------------
 
   void resumeChapter(int checkpoint) {
+    // Menü müziği kesin olarak durur. CH1 kayıtlarında (1, 5, 6) hikâye
+    // müziği başlar; playBGM önce çalanı durdurur. Diğer bölümlerin müziği
+    // henüz tanımlı değil.
+    // 2 = CH2, 3 = CH3, 4 = final; aşağıdaki else dalı da CH1 girişine gider.
+    final resumesChapterOne = checkpoint < 2 || checkpoint > 4;
+    if (resumesChapterOne) {
+      AudioManager.instance.playBGM('chapter_hikaye_bg.mp3');
+    } else {
+      AudioManager.instance.stopBGM();
+    }
+
     // 6 = Chapter 1 fark bulmaca sonuç ekranı
     // 5 = Chapter 1 fark bulmaca checkpoint'i
     if (checkpoint == 6) {

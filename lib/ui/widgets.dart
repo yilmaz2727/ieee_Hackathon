@@ -2,12 +2,91 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../audio_manager.dart';
 import '../game/lake_game.dart';
 
 const ink = Color(0xff214e43),
     cream = Color(0xfffff8e9),
     gold = Color(0xffeecb72),
     coral = Color(0xffe88770);
+
+/// Parmak ekrana değdiği anda (onTapDown) tıklama sesini çalıp eylemi
+/// tetikler; parmağın kalkması beklenmez.
+///
+/// Görünüm [builder] içindeki butondan gelir ve aynen korunur. Buton işaretçi
+/// olaylarını almaz (yalnızca bu sarmalayıcı alır); klavye ve ekran okuyucu
+/// ise butonun onPressed'i üzerinden yine aynı eylemi çalıştırır. Ripple
+/// yerine basılıyken buton hafifçe (%95) küçülür.
+class TapDownButton extends StatefulWidget {
+  const TapDownButton({
+    super.key,
+    required this.onTap,
+    required this.builder,
+    this.sound = clickSound,
+  });
+
+  static const clickSound = 'bubble_button_click.mp3';
+
+  /// Dedemin Doğa Kitabı'nı açan ve kitabın içindeki butonlar için.
+  static const bookSound = 'dedenin_kitabi_click.mp3';
+
+  /// null ise buton pasif görünür ve dokunuşa tepki vermez.
+  final VoidCallback? onTap;
+  final Widget Function(VoidCallback? onPressed) builder;
+  final String sound;
+
+  @override
+  State<TapDownButton> createState() => _TapDownButtonState();
+}
+
+class _TapDownButtonState extends State<TapDownButton> {
+  bool _down = false;
+
+  void _setDown(bool value) {
+    if (mounted && _down != value) setState(() => _down = value);
+  }
+
+  @override
+  void didUpdateWidget(TapDownButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Basılıyken pasifleşen buton küçük kalmasın.
+    if (widget.onTap == null) _down = false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final action = widget.onTap;
+    final pressed = action == null
+        ? null
+        : () {
+            AudioManager.instance.playEffect(widget.sound);
+            action();
+          };
+
+    return MouseRegion(
+      cursor: pressed == null ? MouseCursor.defer : SystemMouseCursors.click,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: pressed == null
+            ? null
+            : (_) {
+                _setDown(true);
+                pressed();
+              },
+        // Buton pasifleşse bile parmak kalkınca eski boyutuna dönebilsin diye
+        // bu ikisi her zaman bağlı.
+        onTapUp: (_) => _setDown(false),
+        onTapCancel: () => _setDown(false),
+        child: AnimatedScale(
+          scale: _down ? .95 : 1,
+          duration: const Duration(milliseconds: 90),
+          curve: Curves.easeOut,
+          child: IgnorePointer(child: widget.builder(pressed)),
+        ),
+      ),
+    );
+  }
+}
 
 class StoryButton extends StatelessWidget {
   const StoryButton(
@@ -32,63 +111,59 @@ class StoryButton extends StatelessWidget {
 
     return SizedBox(
       width: double.infinity,
-      child: FilledButton(
-        onPressed: loading ? null : onPressed,
-        style: FilledButton.styleFrom(
-          backgroundColor: background,
-          foregroundColor: foreground,
-          disabledBackgroundColor: loading
-              ? background
-              : ink.withValues(alpha: .15),
-          disabledForegroundColor: loading
-              ? foreground
-              : ink.withValues(alpha: .45),
-          padding: const EdgeInsets.symmetric(
-            horizontal: 18,
-            vertical: 16,
+      child: TapDownButton(
+        onTap: loading ? null : onPressed,
+        builder: (pressed) => FilledButton(
+          onPressed: pressed,
+          style: FilledButton.styleFrom(
+            backgroundColor: background,
+            foregroundColor: foreground,
+            disabledBackgroundColor: loading
+                ? background
+                : ink.withValues(alpha: .15),
+            disabledForegroundColor: loading
+                ? foreground
+                : ink.withValues(alpha: .45),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
           ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Flexible(
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Flexible(
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 12),
-            SizedBox(
-              width: 20,
-              height: 20,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                child: loading
-                    ? SizedBox(
-                        key: const ValueKey('loading'),
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.2,
-                          color: foreground,
-                          semanticsLabel: label,
-                        ),
-                      )
-                    : Icon(
-                        icon,
-                        key: const ValueKey('icon'),
-                        size: 20,
-                      ),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  child: loading
+                      ? SizedBox(
+                          key: const ValueKey('loading'),
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            color: foreground,
+                            semanticsLabel: label,
+                          ),
+                        )
+                      : Icon(icon, key: const ValueKey('icon'), size: 20),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

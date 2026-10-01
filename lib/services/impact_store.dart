@@ -52,15 +52,18 @@ class ImpactStore {
   }
 
   Future<void> write(List<ImpactEntry> entries) async {
-    if (prefs == null)
+    if (prefs == null) {
       throw StateError(
         'impact.store.unavailable',
       );
+    }
     final data = jsonEncode(entries.map((e) => e.toJson()).toList());
-    if (utf8.encode(data).length > 2800000)
+    if (utf8.encode(data).length > 2800000) {
       throw StateError('impact.store.full');
-    if (!await prefs!.setString(key, data))
+    }
+    if (!await prefs!.setString(key, data)) {
       throw StateError('impact.store.saveError');
+    }
   }
 
   static Future<Uint8List> preparePhoto(Uint8List bytes) =>
@@ -68,14 +71,17 @@ class ImpactStore {
 }
 
 Uint8List _resizePhoto(Uint8List bytes) {
-  if (bytes.length > 12 * 1024 * 1024)
+  if (bytes.length > 12 * 1024 * 1024) {
     throw const FormatException('impact.maxSize');
+  }
   final decoder = img.findDecoderForData(bytes);
-  if (decoder == null)
+  if (decoder == null) {
     throw const FormatException('impact.photo.invalid');
+  }
   final info = decoder.startDecode(bytes);
-  if (info == null || info.width * info.height > 40000000)
+  if (info == null || info.width * info.height > 40000000) {
     throw const FormatException('impact.photo.tooLargeUnreadable');
+  }
   final decoded = decoder.decodeFrame(0);
   if (decoded == null) throw const FormatException('impact.photo.readError');
   final oriented = img.bakeOrientation(decoded);

@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../../../audio_manager.dart';
 import '../../../game/story_controller.dart';
 import '../../../localization/app_localizations.dart';
 import '../../../ui/widgets.dart';
@@ -145,9 +146,18 @@ class _ChapterOneDifferenceGameState extends State<ChapterOneDifferenceGame> {
     if (_found.length == _targets.length) {
       _completing = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) widget.onComplete();
+        if (mounted) _finishPuzzle();
       });
+    } else {
+      // Önceki müzik (menü veya hikâye) durur, bulmaca müziği başlar.
+      AudioManager.instance.playBGM('fark_bulma_oyunu_bg.mp3');
     }
+  }
+
+  // CH2 müziği belirlenene kadar bulmacadan sonra menü müziği çalar.
+  void _finishPuzzle() {
+    AudioManager.instance.playBGM('ana_menu_bg.mp3');
+    widget.onComplete();
   }
 
   void _handleTap(Offset localPosition, Size renderedSize) {
@@ -172,7 +182,8 @@ class _ChapterOneDifferenceGameState extends State<ChapterOneDifferenceGame> {
 
     if (hit == null) return;
 
-    widget.story.markDifferenceFound(hit!);
+    widget.story.markDifferenceFound(hit);
+    AudioManager.instance.playEffect('puzzle_fark_bulma_bildin.mp3');
     setState(() {
       _completing = _found.length == _targets.length;
     });
@@ -180,7 +191,7 @@ class _ChapterOneDifferenceGameState extends State<ChapterOneDifferenceGame> {
     // The animated green check is the feedback. No extra toast is shown.
     if (_completing) {
       Future<void>.delayed(const Duration(milliseconds: 700), () {
-        if (mounted) widget.onComplete();
+        if (mounted) _finishPuzzle();
       });
     }
   }

@@ -41,6 +41,22 @@ class _BookSheetState extends State<BookSheet> {
     if (!widget.pages.contains(page)) page = 0;
   }
 
+  // Kitap butonları: kitaba özel tıklama sesi, gecikmesiz dokunuş ve küçülme.
+  // Tooltip dışarıda, çünkü içteki buton işaretçi almıyor.
+  Widget _bookButton({
+    required String tooltip,
+    required VoidCallback? onTap,
+    required Widget Function(VoidCallback? pressed) builder,
+  }) => Tooltip(
+    message: tooltip,
+    triggerMode: TooltipTriggerMode.manual,
+    child: TapDownButton(
+      onTap: onTap,
+      sound: TapDownButton.bookSound,
+      builder: builder,
+    ),
+  );
+
   @override
   Widget build(BuildContext context) => SafeArea(
     child: Center(
@@ -127,10 +143,13 @@ class _BookSheetState extends State<BookSheet> {
                           ),
                         ),
                       ),
-                      IconButton(
+                      _bookButton(
                         tooltip: tr('book.close'),
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close, color: ink),
+                        onTap: () => Navigator.pop(context),
+                        builder: (pressed) => IconButton(
+                          onPressed: pressed,
+                          icon: const Icon(Icons.close, color: ink),
+                        ),
                       ),
                     ],
                   ),
@@ -247,28 +266,31 @@ class _BookSheetState extends State<BookSheet> {
                       for (var i = 0; i < 5; i++)
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 5),
-                          child: IconButton.filledTonal(
+                          child: _bookButton(
                             tooltip: widget.pages.contains(i)
                                 ? titles[i]
                                 : tr('common.notDiscovered'),
-                            onPressed: widget.pages.contains(i)
+                            onTap: widget.pages.contains(i)
                                 ? () => setState(() => page = i)
                                 : null,
-                            style: IconButton.styleFrom(
-                              minimumSize: const Size(38, 38),
-                              backgroundColor: page == i
-                                  ? ink
-                                  : const Color(0xffeadbbd),
-                              foregroundColor: page == i ? cream : ink,
+                            builder: (pressed) => IconButton.filledTonal(
+                              onPressed: pressed,
+                              style: IconButton.styleFrom(
+                                minimumSize: const Size(38, 38),
+                                backgroundColor: page == i
+                                    ? ink
+                                    : const Color(0xffeadbbd),
+                                foregroundColor: page == i ? cream : ink,
+                              ),
+                              icon: widget.pages.contains(i)
+                                  ? Text(
+                                      '${i + 1}',
+                                      style: TextStyle(
+                                        color: page == i ? cream : ink,
+                                      ),
+                                    )
+                                  : const Icon(Icons.lock_outline, size: 17),
                             ),
-                            icon: widget.pages.contains(i)
-                                ? Text(
-                                    '${i + 1}',
-                                    style: TextStyle(
-                                      color: page == i ? cream : ink,
-                                    ),
-                                  )
-                                : const Icon(Icons.lock_outline, size: 17),
                           ),
                         ),
                     ],

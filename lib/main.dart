@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'audio_manager.dart';
 import 'ui/story_intro.dart';
 import 'features/book/book_sheet.dart';
 import 'features/chapters/chapters.dart';
@@ -28,6 +29,7 @@ Future<void> main() async {
     /* Play without persistence. */
   }
   await AppLocalizations.instance.loadInitial(prefs);
+  await AudioManager.init();
   runApp(EsmaApp(prefs: prefs));
 }
 
@@ -76,10 +78,12 @@ class _StoryScreenState extends State<StoryScreen>
   String _savedDifferenceSignature = '';
   Scene lastScene = Scene.home;
   Future<void> saveQueue = Future.value();
+  bool startingAdventure = false;
   bool get atHome => story.scene == Scene.home;
   @override
   void initState() {
     super.initState();
+    AudioManager.instance.playBGM('ana_menu_bg.mp3');
     story = widget.controller ?? StoryController();
     WidgetsBinding.instance.addObserver(this);
     game = LakeGame(story);
@@ -138,6 +142,11 @@ class _StoryScreenState extends State<StoryScreen>
     if (lastScene == current) return;
 
     lastScene = current;
+
+    // Ana menüye her dönüşte menü müziği.
+    if (current == Scene.home) {
+      AudioManager.instance.playBGM('ana_menu_bg.mp3');
+    }
 
     final chapterOneDifferenceCheckpoint =
         current == Scene.differencePuzzle ||
@@ -263,13 +272,19 @@ class _StoryScreenState extends State<StoryScreen>
         title: Text(tr('pause.title')),
         content: Text(tr('pause.body')),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(tr('common.home')),
+          TapDownButton(
+            onTap: () => Navigator.pop(context, true),
+            builder: (pressed) => TextButton(
+              onPressed: pressed,
+              child: Text(tr('common.home')),
+            ),
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(tr('common.continue')),
+          TapDownButton(
+            onTap: () => Navigator.pop(context, false),
+            builder: (pressed) => FilledButton(
+              onPressed: pressed,
+              child: Text(tr('common.continue')),
+            ),
           ),
         ],
       ),
@@ -283,35 +298,56 @@ class _StoryScreenState extends State<StoryScreen>
   }
 
   Future<void> newGame() async {
-    if (savedChapter > 0) {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(tr('newGame.title')),
-          content: Text(tr('newGame.body')),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text(tr('common.cancel')),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(tr('newGame.restart')),
-            ),
-          ],
-        ),
+    // onTapDown hızlı art arda dokunuşlarda iki kez tetiklenebilir.
+    if (startingAdventure) return;
+    startingAdventure = true;
+    try {
+      if (savedChapter > 0) {
+        final ok = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(tr('newGame.title')),
+            content: Text(tr('newGame.body')),
+            actions: [
+              TapDownButton(
+                onTap: () => Navigator.pop(context, false),
+                builder: (pressed) => TextButton(
+                  onPressed: pressed,
+                  child: Text(tr('common.cancel')),
+                ),
+              ),
+              TapDownButton(
+                onTap: () => Navigator.pop(context, true),
+                builder: (pressed) => FilledButton(
+                  onPressed: pressed,
+                  child: Text(tr('newGame.restart')),
+                ),
+              ),
+            ],
+          ),
+        );
+        if (ok != true) return;
+      }
+      if (!mounted) return;
+
+      // Menü müziği durur; StoryIntro hikâye müziğini başlatır.
+      AudioManager.instance.stopBGM();
+
+      final start = await Navigator.of(context).push<bool>(
+        MaterialPageRoute<bool>(builder: (_) => const StoryIntro()),
       );
-      if (ok != true) return;
+
+      if (!mounted) return;
+      if (start != true) {
+        // Hikâyeden geri tuşuyla çıkıldı: menüye ve müziğine dön.
+        AudioManager.instance.playBGM('ana_menu_bg.mp3');
+        return;
+      }
+
+      story.startNew();
+    } finally {
+      startingAdventure = false;
     }
-    if (!mounted) return;
-
-    final start = await Navigator.of(
-      context,
-    ).push<bool>(MaterialPageRoute<bool>(builder: (_) => const StoryIntro()));
-
-    if (!mounted || start != true) return;
-
-    story.startNew();
   }
 
   @override
@@ -435,6 +471,7 @@ class _StoryScreenState extends State<StoryScreen>
             Icons.menu_book_rounded,
             tr('header.book'),
             () => book(),
+            sound: TapDownButton.bookSound,
           ),
         const SizedBox(width: 6),
         if (!atHome && story.scene != Scene.cleanupFirst)
@@ -476,15 +513,28 @@ class _StoryScreenState extends State<StoryScreen>
     ),
   );
 
-  Widget circleButton(IconData icon, String label, VoidCallback action) =>
-      IconButton.filledTonal(
-        tooltip: label,
-        onPressed: action,
-        style: IconButton.styleFrom(
-          backgroundColor: cream,
-          foregroundColor: ink,
+  // Tooltip dışarıda: içteki buton işaretçi almadığı için fareyle üzerine
+  // gelince yine görünsün. manual mod onTapDown'ı geciktirmez.
+  Widget circleButton(
+    IconData icon,
+    String label,
+    VoidCallback action, {
+    String sound = TapDownButton.clickSound,
+  }) => Tooltip(
+        message: label,
+        triggerMode: TooltipTriggerMode.manual,
+        child: TapDownButton(
+          onTap: action,
+          sound: sound,
+          builder: (pressed) => IconButton.filledTonal(
+            onPressed: pressed,
+            style: IconButton.styleFrom(
+              backgroundColor: cream,
+              foregroundColor: ink,
+            ),
+            icon: Icon(icon, size: 20),
+          ),
         ),
-        icon: Icon(icon, size: 20),
       );
   Widget chapterBar() => Padding(
     padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
@@ -739,12 +789,15 @@ class _StoryScreenState extends State<StoryScreen>
                                 : story.resumeChapter(savedChapter),
                           ),
                         ),
-                      TextButton.icon(
-                        onPressed: () => next(Scene.impactMap),
-                        icon: const Icon(Icons.map_outlined, size: 18),
-                        label: Text(
-                          tr('home.impactMap'),
-                          style: TextStyle(fontSize: 12),
+                      TapDownButton(
+                        onTap: () => next(Scene.impactMap),
+                        builder: (pressed) => TextButton.icon(
+                          onPressed: pressed,
+                          icon: const Icon(Icons.map_outlined, size: 18),
+                          label: Text(
+                            tr('home.impactMap'),
+                            style: TextStyle(fontSize: 12),
+                          ),
                         ),
                       ),
                     ],
@@ -1105,10 +1158,14 @@ class _StoryScreenState extends State<StoryScreen>
                 if (bookPage != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
-                    child: TextButton.icon(
-                      onPressed: () => book(initial: bookPage),
-                      icon: const Icon(Icons.menu_book_rounded),
-                      label: Text(tr('book.open')),
+                    child: TapDownButton(
+                      onTap: () => book(initial: bookPage),
+                      sound: TapDownButton.bookSound,
+                      builder: (pressed) => TextButton.icon(
+                        onPressed: pressed,
+                        icon: const Icon(Icons.menu_book_rounded),
+                        label: Text(tr('book.open')),
+                      ),
                     ),
                   ),
                 const SizedBox(height: 14),

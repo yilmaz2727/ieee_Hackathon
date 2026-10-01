@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../audio_manager.dart';
 import '../localization/app_localizations.dart';
+import 'widgets.dart';
 
 class StoryIntro extends StatefulWidget {
   const StoryIntro({super.key});
@@ -61,6 +63,13 @@ class _StoryIntroState extends State<StoryIntro> {
         'Grandfather: “Of course. Let’s start with the litter on the shore!”',
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    // Sayfalar arasında ve CH1 girişinde kesilmeden çalmaya devam eder.
+    AudioManager.instance.playBGM('chapter_hikaye_bg.mp3');
+  }
+
   void _finish() {
     if (_closing) return;
     _closing = true;
@@ -107,9 +116,12 @@ class _StoryIntroState extends State<StoryIntro> {
                     ),
                   ),
                   actions: [
-                    TextButton(
-                      onPressed: _finish,
-                      child: Text(isTr ? 'Atla' : 'Skip'),
+                    TapDownButton(
+                      onTap: _finish,
+                      builder: (pressed) => TextButton(
+                        onPressed: pressed,
+                        child: Text(isTr ? 'Atla' : 'Skip'),
+                      ),
                     ),
                   ],
                 ),
@@ -208,11 +220,14 @@ class _StoryIntroState extends State<StoryIntro> {
                             padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                             child: Row(
                               children: [
-                                OutlinedButton(
-                                  onPressed: _page == 0
+                                TapDownButton(
+                                  onTap: _page == 0
                                       ? null
                                       : () => setState(() => _page--),
-                                  child: Text(isTr ? 'Geri' : 'Back'),
+                                  builder: (pressed) => OutlinedButton(
+                                    onPressed: pressed,
+                                    child: Text(isTr ? 'Geri' : 'Back'),
+                                  ),
                                 ),
                                 Expanded(
                                   child: Text(
@@ -229,26 +244,31 @@ class _StoryIntroState extends State<StoryIntro> {
                                   fit: FlexFit.tight,
                                   child: Align(
                                     alignment: Alignment.centerRight,
-                                  child: FilledButton(
-                                    onPressed: _next,
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: const Color(0xFF244B43),
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 20,
-                                        vertical: 14,
+                                    child: TapDownButton(
+                                      onTap: _next,
+                                      builder: (pressed) => FilledButton(
+                                        onPressed: pressed,
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: const Color(
+                                            0xFF244B43,
+                                          ),
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 20,
+                                            vertical: 14,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          lastPage
+                                              ? (isTr
+                                                    ? 'Yolculuğa Başla'
+                                                    : 'Start Journey')
+                                              : (isTr ? 'Devam' : 'Next'),
+                                          textAlign: TextAlign.center,
+                                        ),
                                       ),
                                     ),
-                                    child: Text(
-                                      lastPage
-                                          ? (isTr
-                                                ? 'Yolculuğa Başla'
-                                                : 'Start Journey')
-                                          : (isTr ? 'Devam' : 'Next'),
-                                      textAlign: TextAlign.center,
-                                    ),
                                   ),
-                                ),
                                 ),
                               ],
                             ),
