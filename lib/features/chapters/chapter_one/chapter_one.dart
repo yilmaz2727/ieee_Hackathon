@@ -243,36 +243,105 @@ class _ChapterOneState extends State<ChapterOne> {
                                 drop(details.data, bin);
                               },
                               builder: (context, candidates, rejected) {
+                                final baseColor = [
+                                  const Color(0xffc88635),
+                                  const Color(0xff537f8c),
+                                  ink,
+                                ][bin];
+                                final active = candidates.isNotEmpty;
+                                final bodyColor = active ? gold : baseColor;
+
                                 return AnimatedContainer(
                                   duration: const Duration(milliseconds: 120),
-                                  height: 78,
-                                  decoration: BoxDecoration(
-                                    color: candidates.isNotEmpty
-                                        ? gold
-                                        : [
-                                            const Color(0xffc88635),
-                                            const Color(0xff537f8c),
-                                            ink,
-                                          ][bin],
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(
-                                      color: cream,
-                                      width: candidates.isNotEmpty ? 3 : 1,
-                                    ),
-                                  ),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
+                                  height: 92,
+                                  padding: const EdgeInsets.only(top: 7),
+                                  child: Stack(
+                                    clipBehavior: Clip.none,
                                     children: [
-                                      const Icon(
-                                        Icons.delete_outline,
-                                        color: Colors.white,
-                                        size: 30,
+                                      // Geri dönüşüm kutusunun kapak kısmı.
+                                      Positioned(
+                                        top: 0,
+                                        left: 7,
+                                        right: 7,
+                                        child: Container(
+                                          height: 16,
+                                          decoration: BoxDecoration(
+                                            color: Color.lerp(
+                                              bodyColor,
+                                              Colors.black,
+                                              .12,
+                                            ),
+                                            borderRadius: BorderRadius.circular(7),
+                                            border: Border.all(
+                                              color: cream,
+                                              width: active ? 2.5 : 1,
+                                            ),
+                                          ),
+                                          child: Center(
+                                            child: Container(
+                                              width: 28,
+                                              height: 4,
+                                              decoration: BoxDecoration(
+                                                color: cream.withValues(alpha: .9),
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                       ),
-                                      Text(
-                                        [tr('bins.plastic'), tr('bins.metal'), tr('bins.paper')][bin],
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
+
+                                      // Kutunun gövdesi.
+                                      Positioned(
+                                        top: 13,
+                                        left: 11,
+                                        right: 11,
+                                        bottom: 0,
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            color: bodyColor,
+                                            borderRadius: const BorderRadius.only(
+                                              topLeft: Radius.circular(7),
+                                              topRight: Radius.circular(7),
+                                              bottomLeft: Radius.circular(14),
+                                              bottomRight: Radius.circular(14),
+                                            ),
+                                            border: Border.all(
+                                              color: cream,
+                                              width: active ? 3 : 1.4,
+                                            ),
+                                            boxShadow: const [
+                                              BoxShadow(
+                                                color: Color(0x26000000),
+                                                blurRadius: 5,
+                                                offset: Offset(0, 3),
+                                              ),
+                                            ],
+                                          ),
+                                          child: Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              const Icon(
+                                                Icons.recycling_rounded,
+                                                color: Colors.white,
+                                                size: 28,
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                [
+                                                  tr('bins.plastic'),
+                                                  tr('bins.metal'),
+                                                  tr('bins.paper'),
+                                                ][bin],
+                                                textAlign: TextAlign.center,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ),
                                     ],

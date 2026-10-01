@@ -73,6 +73,7 @@ class _StoryScreenState extends State<StoryScreen>
   bool exporting = false, lifecyclePaused = false;
   String? exportingLanguage;
   int savedChapter = 0;
+  String _savedDifferenceSignature = '';
   Scene lastScene = Scene.home;
   Future<void> saveQueue = Future.value();
   bool get atHome => story.scene == Scene.home;
@@ -83,6 +84,17 @@ class _StoryScreenState extends State<StoryScreen>
     WidgetsBinding.instance.addObserver(this);
     game = LakeGame(story);
     savedChapter = widget.prefs?.getInt('chapter') ?? 0;
+
+    final savedDifferences =
+        widget.prefs?.getStringList('chapter1_difference_found') ?? const <String>[];
+    story.differenceFound.addAll(
+      savedDifferences
+          .map(int.tryParse)
+          .whereType<int>()
+          .where((index) => index >= 0 && index < 5),
+    );
+    _savedDifferenceSignature = _differenceSignature();
+
     story.completed = widget.prefs?.getBool('completed') ?? false;
     story.completedAt = DateTime.tryParse(
       widget.prefs?.getString('completedAt') ?? '',
@@ -99,19 +111,53 @@ class _StoryScreenState extends State<StoryScreen>
     })..start();
   }
 
-  void onStory() {
-    if (lastScene == story.scene) return;
+  String _differenceSignature() {
+    final values = story.differenceFound.toList()..sort();
+    return values.join(',');
+  }
 
-    lastScene = story.scene;
+  void onStory() {
     final current = story.scene;
 
-    // Mevcut kayıt sistemi
+    // Fark bulmacasında bulunan noktaları ayrıca sakla. Böylece ana menüye
+    // dönüldüğünde ve uygulama yeniden açıldığında bulunan farklar korunur.
+    final differenceSignature = _differenceSignature();
+    if (differenceSignature != _savedDifferenceSignature) {
+      _savedDifferenceSignature = differenceSignature;
+      final values = story.differenceFound.map((e) => '$e').toList()..sort();
+      saveQueue = saveQueue
+          .then((_) async {
+            await widget.prefs?.setStringList(
+              'chapter1_difference_found',
+              values,
+            );
+          })
+          .catchError((Object _) {});
+    }
+
+    if (lastScene == current) return;
+
+    lastScene = current;
+
+    final chapterOneDifferenceCheckpoint =
+        current == Scene.differencePuzzle ||
+        (current == Scene.firstResult && story.firstCollected >= 10);
+
+    // Mevcut kayıt sistemi + Chapter 1 içi fark bulmaca checkpoint'i.
     if (current == Scene.intro ||
         current == Scene.underwater ||
         current == Scene.fishing ||
         current == Scene.prevention ||
-        current == Scene.success) {
-      savedChapter = current == Scene.prevention ? 4 : story.chapter;
+        current == Scene.success ||
+        chapterOneDifferenceCheckpoint ||
+        current == Scene.differenceResult) {
+      if (current == Scene.differenceResult) {
+        savedChapter = 6;
+      } else if (chapterOneDifferenceCheckpoint) {
+        savedChapter = 5;
+      } else {
+        savedChapter = current == Scene.prevention ? 4 : story.chapter;
+      }
 
       final chapter = savedChapter,
           complete = story.completed,
@@ -135,7 +181,8 @@ class _StoryScreenState extends State<StoryScreen>
 
     final int? automaticBookPage;
 
-    // Chapter 1 başarıyla tamamlandı.
+    // Chapter 1'de atık ayrıştırma başarıyla tamamlandı.
+    // Kitabın ilk sayfası fark bulmacasından ÖNCE açılır.
     if (current == Scene.firstResult && story.firstCollected >= 10) {
       automaticBookPage = 0;
     }
@@ -520,7 +567,7 @@ class _StoryScreenState extends State<StoryScreen>
                 'score': story.firstCollected * 10,
               }),
               tr('chapter1.result.continue'),
-              () => next(Scene.underwater),
+              () => next(Scene.differencePuzzle),
               eyebrow: tr('chapter1.result.successEyebrow'),
               bookPage: 0,
             )
@@ -531,6 +578,13 @@ class _StoryScreenState extends State<StoryScreen>
               () => next(Scene.cleanupFirst),
               eyebrow: tr('chapter1.result.failEyebrow'),
             ),
+    Scene.differencePuzzle => ChapterOneDifferenceGame(
+      story: story,
+      onComplete: () => next(Scene.differenceResult),
+    ),
+    Scene.differenceResult => ChapterOneDifferenceResult(
+      onContinue: () => next(Scene.underwater),
+    ),
     Scene.underwater => ChapterTwoIntro(onStart: () => next(Scene.protection)),
     Scene.protection => ChapterTwoGame(story: story),
     Scene.protectionResult => storyCard(
