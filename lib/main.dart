@@ -127,6 +127,23 @@ class _StoryScreenState extends State<StoryScreen>
     })..start();
   }
 
+  // Bu sahnelere geçilince müzik durur. photo, impactMap ve reward listede
+  // yok: finalden sonra zaten sessizler, ana menüden açılınca menü müziği sürer.
+  static const _silentScenes = {
+    Scene.underwater,
+    Scene.protection,
+    Scene.protectionResult,
+    Scene.fishHealing,
+    Scene.fishHealingResult,
+    Scene.fishing,
+    Scene.catchWaste,
+    Scene.inspection,
+    Scene.discovery,
+    Scene.rewind,
+    Scene.prevention,
+    Scene.success,
+  };
+
   String _differenceSignature() {
     final values = story.differenceFound.toList()..sort();
     return values.join(',');
@@ -169,6 +186,11 @@ class _StoryScreenState extends State<StoryScreen>
     // Ana menüye her dönüşte menü müziği.
     if (current == Scene.home) {
       AudioManager.instance.playBGM('ana_menu_bg.mp3');
+    }
+    // CH2, CH3 ve final şimdilik bilinçli olarak müziksiz; ses entegrasyonu
+    // arayüz ve mekanik güncellemeleri bitince ayrıca yapılacak.
+    if (_silentScenes.contains(current)) {
+      AudioManager.instance.stopBGM();
     }
 
     final chapterOneDifferenceCheckpoint =
@@ -257,6 +279,12 @@ class _StoryScreenState extends State<StoryScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     previousFrame = null;
+    // Arka planda ses çalmasın; dönüşte müzik kaldığı yerden sürsün.
+    if (state == AppLifecycleState.resumed) {
+      AudioManager.instance.resumeFromBackground();
+    } else {
+      AudioManager.instance.pauseForBackground();
+    }
     if (state != AppLifecycleState.resumed && !story.paused) {
       lifecyclePaused = true;
       story.setPaused(true);

@@ -389,8 +389,8 @@ class StoryController extends ChangeNotifier {
 
   void resumeChapter(int checkpoint) {
     // Menü müziği kesin olarak durur. CH1 kayıtlarında (1, 5, 6) hikâye
-    // müziği başlar; playBGM önce çalanı durdurur. Diğer bölümlerin müziği
-    // henüz tanımlı değil.
+    // müziği başlar; playBGM önce çalanı durdurur. CH2, CH3 ve final şimdilik
+    // bilinçli olarak sessiz.
     // 2 = CH2, 3 = CH3, 4 = final; aşağıdaki else dalı da CH1 girişine gider.
     final resumesChapterOne =
         checkpoint < 2 || checkpoint == 5 || checkpoint == 6;

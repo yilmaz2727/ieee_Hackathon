@@ -72,11 +72,23 @@ class AudioManager {
     'kaybettin.mp3',
     'dedenin_kitabi_click.mp3',
     'fark_bulma_oyunu_bg.mp3',
-    'puzzle_fark_bulma_bildin.mp3',
+    'fark_bulma_bildin.mp3',
   ];
 
   // Aynı anda çalabilecek efekt sayısı.
   static const _effectPoolSize = 4;
+
+  // Efektler müziği bastırmasın diye tam seviyenin biraz altında.
+  static const _effectVolume = 0.8;
+
+  // Sık ve uzun çalan efektler için ayrı seviye (0.0–1.0). CH1'de her atıkta
+  // iki efekt çalıyor; oyun müziği duyulabilsin diye daha kısık. Kulakla
+  // ayarlamak için yalnızca bu tabloyu değiştirmek yeterli.
+  static const _effectVolumes = <String, double>{
+    'ch1_nesne_tutma_effect.mp3': 0.45,
+    'ch1_dogru_kutu.mp3': 0.5,
+    'ch1_yanlis_kutu.mp3': 0.55,
+  };
 
   // Oyuncular init() içinde oluşturulur. init() çağrılmadıysa (ör. testlerde,
   // ses eklentisi yokken) tüm çalma fonksiyonları sessizce hiçbir şey yapmaz.
@@ -84,11 +96,19 @@ class AudioManager {
   late final List<AudioPlayer> effectPlayers;
 
   int _nextEffect = 0;
+  // Her efekt dosyasını son çalan oyuncu; aynı efekt üst üste binmesin diye.
+  final Map<String, AudioPlayer> _lastPlayerFor = {};
   String? _currentBGM;
   // Her müzik isteğinde artar; bekleyen bir "sonra çal" isteğinin hâlâ
   // geçerli olup olmadığını anlamak için kullanılır.
   int _bgmRequest = 0;
   bool _initialized = false;
+
+  // Uygulama arka plandayken ses çalınmaz. Duraklatılan müzik dönüşte kaldığı
+  // yerden sürer; arka plandayken istenen yeni müzik dönüşte başlar.
+  bool _inBackground = false;
+  bool _resumeOnForeground = false;
+  String? _pendingBGM;
 
   /// Oyun açılışında bir kez çağrılır.
   static Future<void> init() => instance._init();
@@ -119,7 +139,7 @@ class AudioManager {
         await player.setAudioContext(context);
         await player.setPlayerMode(PlayerMode.lowLatency);
         await player.setReleaseMode(ReleaseMode.stop);
-        await player.setVolume(1.0);
+        await player.setVolume(_effectVolume);
       });
     }
 
@@ -136,6 +156,13 @@ class AudioManager {
   Future<void> playBGM(String dosyaAdi) async {
     if (!_initialized) return;
     final file = _normalize(dosyaAdi);
+    if (_inBackground) {
+      _bgmRequest++;
+      _currentBGM = file;
+      _pendingBGM = file;
+      _resumeOnForeground = false;
+      return;
+    }
     if (_currentBGM == file && bgPlayer.state == PlayerState.playing) return;
     _bgmRequest++;
     _currentBGM = file;
@@ -153,7 +180,36 @@ class AudioManager {
     if (!_initialized) return;
     _bgmRequest++;
     _currentBGM = null;
+    _pendingBGM = null;
+    _resumeOnForeground = false;
     await _safely(bgPlayer.stop);
+  }
+
+  /// Uygulama arka plana alınınca çağrılır (inactive/paused/hidden/detached).
+  /// Art arda gelen çağrılar zararsızdır.
+  Future<void> pauseForBackground() async {
+    if (!_initialized || _inBackground) return;
+    _inBackground = true;
+    _resumeOnForeground = bgPlayer.state == PlayerState.playing;
+    await _safely(bgPlayer.pause);
+    for (final player in effectPlayers) {
+      await _safely(player.stop);
+    }
+  }
+
+  /// Uygulamaya geri dönülünce çağrılır.
+  Future<void> resumeFromBackground() async {
+    if (!_initialized || !_inBackground) return;
+    _inBackground = false;
+    final pending = _pendingBGM;
+    _pendingBGM = null;
+    if (pending != null) {
+      _currentBGM = null; // playBGM aynı dosyayı atlamasın.
+      await playBGM(pending);
+    } else if (_resumeOnForeground) {
+      _resumeOnForeground = false;
+      await _safely(bgPlayer.resume);
+    }
   }
 
   /// Müziği durdurur, kısa bir sonuç sesi (ör. kazandin/kaybettin) çalar ve
@@ -164,6 +220,8 @@ class AudioManager {
   /// playBGM/stopBGM çağrılırsa [sonrakiBGM] başlatılmaz.
   Future<void> playJingleThenBGM(String dosyaAdi, String sonrakiBGM) async {
     if (!_initialized) return;
+    // Arka plandayken sonuç sesi atlanır; sonraki müzik dönüşte başlar.
+    if (_inBackground) return playBGM(sonrakiBGM);
     final request = ++_bgmRequest;
     _currentBGM = null;
     await _safely(() async {
@@ -180,17 +238,26 @@ class AudioManager {
     if (request == _bgmRequest) await playBGM(sonrakiBGM);
   }
 
-  /// Kısa efekt çalar. Oyuncular sırayla kullanıldığı için
-  /// art arda gelen efektler birbirini kesmez.
+  /// Kısa efekt çalar. Farklı efektler aynı anda çalabilir; aynı efekt ise
+  /// tekrar çalınınca öncekini keser ve baştan başlar (kopyalar üst üste
+  /// binip müziği bastırmasın).
   Future<void> playEffect(String dosyaAdi) async {
-    if (!_initialized) return;
-    final player = effectPlayers[_nextEffect];
-    _nextEffect = (_nextEffect + 1) % effectPlayers.length;
+    if (!_initialized || _inBackground) return;
+    final file = _normalize(dosyaAdi);
+    var player = _lastPlayerFor[file];
+    if (player == null) {
+      player = effectPlayers[_nextEffect];
+      _nextEffect = (_nextEffect + 1) % effectPlayers.length;
+      // Bu oyuncu artık başka dosyanın değil.
+      _lastPlayerFor.removeWhere((_, p) => p == player);
+      _lastPlayerFor[file] = player;
+    }
+    final target = player;
     await _safely(() async {
-      await player.stop();
-      await player.play(
-        AssetSource('$_folder${_normalize(dosyaAdi)}'),
-        volume: 1.0,
+      await target.stop();
+      await target.play(
+        AssetSource('$_folder$file'),
+        volume: _effectVolumes[file] ?? _effectVolume,
       );
     });
   }

@@ -183,7 +183,7 @@ class _ChapterOneDifferenceGameState extends State<ChapterOneDifferenceGame> {
     if (hit == null) return;
 
     widget.story.markDifferenceFound(hit);
-    AudioManager.instance.playEffect('puzzle_fark_bulma_bildin.mp3');
+    AudioManager.instance.playEffect('fark_bulma_bildin.mp3');
     setState(() {
       _completing = _found.length == _targets.length;
     });
