@@ -45,7 +45,9 @@ class AudioManager {
     // Slider hareketleri sırayla uygulanır ve kaydedilir.
     _musicSettingsQueue = _musicSettingsQueue.then((_) async {
       await _safely(() async {
-        if (_initialized) {
+        // Jingle çalarken onun efekt seviyesi korunur; ayar kaydedilir ve
+        // jingle'dan sonra başlayan müzikte uygulanır.
+        if (_initialized && _jingleRequest != _bgmRequest) {
           await bgPlayer.setVolume(effectiveMusicVolume);
         }
       });
@@ -73,21 +75,29 @@ class AudioManager {
     'dedenin_kitabi_click.mp3',
     'fark_bulma_oyunu_bg.mp3',
     'fark_bulma_bildin.mp3',
+    // CH2
+    'ch2_oyun_bg.mp3',
+    'mikroplastik_yutma.mp3',
+    'balik_heal_bg.mp3',
+    'dogru_balik_heal.mp3',
+    'final_heal.mp3',
+    'tum_balik_heal.mp3',
   ];
 
   // Aynı anda çalabilecek efekt sayısı.
   static const _effectPoolSize = 4;
 
-  // Efektler müziği bastırmasın diye tam seviyenin biraz altında.
-  static const _effectVolume = 0.8;
+  // Varsayılan efekt seviyesi (maksimum); daha kısık olması gerekenler
+  // _effectVolumes tablosunda.
+  static const _effectVolume = 1.0;
 
-  // Sık ve uzun çalan efektler için ayrı seviye (0.0–1.0). CH1'de her atıkta
-  // iki efekt çalıyor; oyun müziği duyulabilsin diye daha kısık. Kulakla
-  // ayarlamak için yalnızca bu tabloyu değiştirmek yeterli.
+  // Yalnızca CH1 çöp ayıklama efektleri sınırlı (0.0–1.0): her atıkta iki
+  // efekt çalıyor, oyun müziği duyulabilsin. Diğer tüm efektler varsayılan
+  // 1.0. Kulakla ayarlamak için yalnızca bu tabloyu değiştirmek yeterli.
   static const _effectVolumes = <String, double>{
-    'ch1_nesne_tutma_effect.mp3': 0.45,
-    'ch1_dogru_kutu.mp3': 0.5,
-    'ch1_yanlis_kutu.mp3': 0.55,
+    'ch1_nesne_tutma_effect.mp3': 0.6,
+    'ch1_dogru_kutu.mp3': 0.6,
+    'ch1_yanlis_kutu.mp3': 0.6,
   };
 
   // Oyuncular init() içinde oluşturulur. init() çağrılmadıysa (ör. testlerde,
@@ -102,6 +112,9 @@ class AudioManager {
   // Her müzik isteğinde artar; bekleyen bir "sonra çal" isteğinin hâlâ
   // geçerli olup olmadığını anlamak için kullanılır.
   int _bgmRequest = 0;
+  // Çalan jingle'ın isteği; _bgmRequest ile eşitse müzik oyuncusunda o an
+  // jingle çalıyor demektir.
+  int? _jingleRequest;
   bool _initialized = false;
 
   // Uygulama arka plandayken ses çalınmaz. Duraklatılan müzik dönüşte kaldığı
@@ -218,22 +231,27 @@ class AudioManager {
   /// Ses, bitişi bildirebilsin diye düşük gecikmeli efekt oyuncusunda değil
   /// müzik oyuncusunda bir kez (döngüsüz) çalınır. Bu arada başka bir
   /// playBGM/stopBGM çağrılırsa [sonrakiBGM] başlatılmaz.
+  ///
+  /// Jingle müzik değil efekt seviyesinde çalar (müzik kapalıyken de
+  /// duyulur); ardından gelen [sonrakiBGM] yine müzik seviyesindedir.
   Future<void> playJingleThenBGM(String dosyaAdi, String sonrakiBGM) async {
     if (!_initialized) return;
     // Arka plandayken sonuç sesi atlanır; sonraki müzik dönüşte başlar.
     if (_inBackground) return playBGM(sonrakiBGM);
+    final file = _normalize(dosyaAdi);
     final request = ++_bgmRequest;
+    _jingleRequest = request;
     _currentBGM = null;
     await _safely(() async {
       await bgPlayer.stop();
       await bgPlayer.setReleaseMode(ReleaseMode.release);
       final finished = bgPlayer.onPlayerComplete.first;
       await bgPlayer.play(
-        AssetSource('$_folder${_normalize(dosyaAdi)}'),
-        volume: effectiveMusicVolume,
+        AssetSource('$_folder$file'),
+        volume: _effectVolumes[file] ?? _effectVolume,
       );
       // Bitiş olayı gelmezse menü müziği yine de başlasın.
-      await finished.timeout(const Duration(seconds: 6));
+      await finished.timeout(const Duration(seconds: 10));
     });
     if (request == _bgmRequest) await playBGM(sonrakiBGM);
   }

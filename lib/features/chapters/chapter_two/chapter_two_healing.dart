@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../../../audio_manager.dart';
 import '../../../game/story_controller.dart';
 import '../../../localization/app_localizations.dart';
 import '../../../ui/widgets.dart';
@@ -27,6 +28,16 @@ class _ChapterTwoHealingGameState extends State<ChapterTwoHealingGame> {
   Timer? _toastTimer;
   String? _toastKey;
 
+  @override
+  void initState() {
+    super.initState();
+    // Çalan müzik (CH2 sonucundaki menü müziği) yerini iyileştirme müziğine
+    // bırakır. Oyun zaten bittiyse sonuç ekranının müziğine dokunulmaz.
+    if (!widget.story.healingComplete) {
+      AudioManager.instance.playBGM('balik_heal_bg.mp3');
+    }
+  }
+
   void _toast(String key) {
     _toastTimer?.cancel();
     setState(() => _toastKey = key);
@@ -38,10 +49,24 @@ class _ChapterTwoHealingGameState extends State<ChapterTwoHealingGame> {
   void _tap(int index) {
     final story = widget.story;
     if (story.paused || story.scene != Scene.fishHealing) return;
+    final audio = AudioManager.instance;
     if (!story.healFish(index)) {
+      // Sağlıklı ya da zaten iyileşmiş balık: yanlış seçim.
       _toast('chapter2.healing.healthy');
-    } else if (story.healingTaps[index] == StoryController.healingTapTarget) {
+      audio.playEffect('ch1_yanlis_kutu.mp3');
+    } else if (story.healingTaps[index] < StoryController.healingTapTarget) {
+      // 1. ve 2. tedavi dokunuşu.
+      audio.playEffect('dogru_balik_heal.mp3');
+    } else {
+      // Balık tamamen iyileşti.
       _toast('chapter2.healing.thanks');
+      if (story.healingComplete) {
+        // Son balık: bitiş efekti yerine özel jingle; iyileştirme müziği
+        // durur, jingle bitince menü müziği başlar.
+        audio.playJingleThenBGM('tum_balik_heal.mp3', 'ana_menu_bg.mp3');
+      } else {
+        audio.playEffect('final_heal.mp3');
+      }
     }
   }
 

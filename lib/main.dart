@@ -127,14 +127,10 @@ class _StoryScreenState extends State<StoryScreen>
     })..start();
   }
 
-  // Bu sahnelere geçilince müzik durur. photo, impactMap ve reward listede
-  // yok: finalden sonra zaten sessizler, ana menüden açılınca menü müziği sürer.
+  // Bu sahnelere geçilince müzik durur. CH2 kendi seslerini yönetiyor; CH3 ve
+  // final şimdilik sessiz. photo, impactMap ve reward listede yok: finalden
+  // sonra zaten sessizler, ana menüden açılınca menü müziği sürer.
   static const _silentScenes = {
-    Scene.underwater,
-    Scene.protection,
-    Scene.protectionResult,
-    Scene.fishHealing,
-    Scene.fishHealingResult,
     Scene.fishing,
     Scene.catchWaste,
     Scene.inspection,
@@ -187,8 +183,7 @@ class _StoryScreenState extends State<StoryScreen>
     if (current == Scene.home) {
       AudioManager.instance.playBGM('ana_menu_bg.mp3');
     }
-    // CH2, CH3 ve final şimdilik bilinçli olarak müziksiz; ses entegrasyonu
-    // arayüz ve mekanik güncellemeleri bitince ayrıca yapılacak.
+    // Henüz sesi bağlanmamış bölümler bilinçli olarak müziksiz.
     if (_silentScenes.contains(current)) {
       AudioManager.instance.stopBGM();
     }
@@ -533,32 +528,33 @@ class _StoryScreenState extends State<StoryScreen>
       ],
     ),
   );
-Widget settingsButton() => IconButton(
-  tooltip: AppLocalizations.instance.isTurkish
-      ? 'Ayarlar'
-      : 'Settings',
-  icon: const Icon(
-    Icons.settings_rounded,
-    color: ink,
-    size: 23,
-  ),
-  style: IconButton.styleFrom(
-    backgroundColor: cream,
-    shape: const CircleBorder(),
-  ),
-  onPressed: () async {
-    final wasPaused = story.paused;
-    story.setPaused(true);
+  // Diğer üst butonlar gibi: dokunulduğu an tıklama sesi + küçülme.
+  Widget settingsButton() => Tooltip(
+    message: AppLocalizations.instance.isTurkish ? 'Ayarlar' : 'Settings',
+    triggerMode: TooltipTriggerMode.manual,
+    child: TapDownButton(
+      onTap: () async {
+        final wasPaused = story.paused;
+        story.setPaused(true);
 
-    try {
-      await openSettings();
-    } finally {
-      if (mounted) {
-        story.setPaused(wasPaused);
-      }
-    }
-  },
-);
+        try {
+          await openSettings();
+        } finally {
+          if (mounted) {
+            story.setPaused(wasPaused);
+          }
+        }
+      },
+      builder: (pressed) => IconButton(
+        icon: const Icon(Icons.settings_rounded, color: ink, size: 23),
+        style: IconButton.styleFrom(
+          backgroundColor: cream,
+          shape: const CircleBorder(),
+        ),
+        onPressed: pressed,
+      ),
+    ),
+  );
 
   Future<void> openSettings() async {
     final audio = AudioManager.instance;
