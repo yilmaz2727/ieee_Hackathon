@@ -1,10 +1,12 @@
 import 'dart:math';
+
 import 'audio_manager.dart';
 import 'ui/story_intro.dart';
 import 'features/book/book_sheet.dart';
 import 'features/chapters/chapters.dart';
 import 'features/final_challenge/final_challenge.dart';
 import 'features/impact/impact_screen.dart';
+
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart' hide Badge;
 import 'package:flutter/services.dart';
@@ -29,6 +31,7 @@ Future<void> main() async {
     /* Play without persistence. */
   }
   await AppLocalizations.instance.loadInitial(prefs);
+  AudioManager.instance.loadMusicSettings(prefs);
   await AudioManager.init();
   runApp(EsmaApp(prefs: prefs));
 }
@@ -76,6 +79,7 @@ class _StoryScreenState extends State<StoryScreen>
   String? exportingLanguage;
   int savedChapter = 0;
   String _savedDifferenceSignature = '';
+  String _savedHealingSignature = '';
   Scene lastScene = Scene.home;
   Future<void> saveQueue = Future.value();
   bool startingAdventure = false;
@@ -90,7 +94,8 @@ class _StoryScreenState extends State<StoryScreen>
     savedChapter = widget.prefs?.getInt('chapter') ?? 0;
 
     final savedDifferences =
-        widget.prefs?.getStringList('chapter1_difference_found') ?? const <String>[];
+        widget.prefs?.getStringList('chapter1_difference_found') ??
+        const <String>[];
     story.differenceFound.addAll(
       savedDifferences
           .map(int.tryParse)
@@ -98,6 +103,13 @@ class _StoryScreenState extends State<StoryScreen>
           .where((index) => index >= 0 && index < 5),
     );
     _savedDifferenceSignature = _differenceSignature();
+    final savedHealing = widget.prefs?.getStringList('chapter2_healing_taps');
+    if (savedHealing != null) {
+      story.restoreHealing(
+        savedHealing.map((v) => int.tryParse(v) ?? -99).toList(),
+      );
+    }
+    _savedHealingSignature = story.healingTaps.join(',');
 
     story.completed = widget.prefs?.getBool('completed') ?? false;
     story.completedAt = DateTime.tryParse(
@@ -139,6 +151,17 @@ class _StoryScreenState extends State<StoryScreen>
           .catchError((Object _) {});
     }
 
+    final healingSignature = story.healingTaps.join(',');
+    if (healingSignature != _savedHealingSignature) {
+      _savedHealingSignature = healingSignature;
+      final values = story.healingTaps.map((v) => '$v').toList();
+      saveQueue = saveQueue
+          .then((_) async {
+            await widget.prefs?.setStringList('chapter2_healing_taps', values);
+          })
+          .catchError((Object _) {});
+    }
+
     if (lastScene == current) return;
 
     lastScene = current;
@@ -159,8 +182,12 @@ class _StoryScreenState extends State<StoryScreen>
         current == Scene.prevention ||
         current == Scene.success ||
         chapterOneDifferenceCheckpoint ||
-        current == Scene.differenceResult) {
-      if (current == Scene.differenceResult) {
+        current == Scene.differenceResult ||
+        current == Scene.fishHealing ||
+        current == Scene.fishHealingResult) {
+      if (current == Scene.fishHealing || current == Scene.fishHealingResult) {
+        savedChapter = current == Scene.fishHealing ? 7 : 8;
+      } else if (current == Scene.differenceResult) {
         savedChapter = 6;
       } else if (chapterOneDifferenceCheckpoint) {
         savedChapter = 5;
@@ -190,12 +217,11 @@ class _StoryScreenState extends State<StoryScreen>
 
     final int? automaticBookPage;
 
-    // Chapter 1'de atık ayrıştırma başarıyla tamamlandı.
-    // Kitabın ilk sayfası fark bulmacasından ÖNCE açılır.
+    // Chapter 1 tamamlandı.
     if (current == Scene.firstResult && story.firstCollected >= 10) {
       automaticBookPage = 0;
     }
-    // Chapter 2 tamamlandı.
+    // Balığı koruma oyunu bitti; iyileştirme oyunundan önce kitabı aç.
     else if (current == Scene.protectionResult) {
       automaticBookPage = 1;
     }
@@ -274,10 +300,8 @@ class _StoryScreenState extends State<StoryScreen>
         actions: [
           TapDownButton(
             onTap: () => Navigator.pop(context, true),
-            builder: (pressed) => TextButton(
-              onPressed: pressed,
-              child: Text(tr('common.home')),
-            ),
+            builder: (pressed) =>
+                TextButton(onPressed: pressed, child: Text(tr('common.home'))),
           ),
           TapDownButton(
             onTap: () => Navigator.pop(context, false),
@@ -333,9 +357,9 @@ class _StoryScreenState extends State<StoryScreen>
       // Menü müziği durur; StoryIntro hikâye müziğini başlatır.
       AudioManager.instance.stopBGM();
 
-      final start = await Navigator.of(context).push<bool>(
-        MaterialPageRoute<bool>(builder: (_) => const StoryIntro()),
-      );
+      final start = await Navigator.of(
+        context,
+      ).push<bool>(MaterialPageRoute<bool>(builder: (_) => const StoryIntro()));
 
       if (!mounted) return;
       if (start != true) {
@@ -370,7 +394,8 @@ class _StoryScreenState extends State<StoryScreen>
                         fit: StackFit.expand,
                         children: [
                           WaterScene(story: story),
-                          if (story.scene == Scene.underwater ||
+                          if (story.scene == Scene.fishHealing ||
+                              story.scene == Scene.underwater ||
                               story.scene == Scene.inspection)
                             const ColoredBox(color: Color(0xb5195e69)),
                           if (story.scene == Scene.fishing)
@@ -465,7 +490,8 @@ class _StoryScreenState extends State<StoryScreen>
             ),
           ),
         ),
-        if (atHome) languageButton(),
+        const SizedBox(width: 6),
+        settingsButton(),
         if (!atHome && story.scene != Scene.cleanupFirst)
           circleButton(
             Icons.menu_book_rounded,
@@ -479,39 +505,206 @@ class _StoryScreenState extends State<StoryScreen>
       ],
     ),
   );
-  Widget languageButton() => PopupMenuButton<String>(
-    tooltip: AppLocalizations.instance.isTurkish
-        ? tr('language.turkish')
-        : tr('language.english'),
-    onSelected: (code) =>
-        AppLocalizations.instance.setLanguage(code, prefs: widget.prefs),
-    itemBuilder: (context) => [
-      PopupMenuItem(value: 'tr', child: Text(tr('language.turkish'))),
-      PopupMenuItem(value: 'en', child: Text(tr('language.english'))),
-    ],
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
-      decoration: BoxDecoration(
-        color: cream,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.language_rounded, color: ink, size: 18),
-          const SizedBox(width: 5),
-          Text(
-            AppLocalizations.instance.languageCode.toUpperCase(),
-            style: const TextStyle(
-              color: ink,
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
+Widget settingsButton() => IconButton(
+  tooltip: AppLocalizations.instance.isTurkish
+      ? 'Ayarlar'
+      : 'Settings',
+  icon: const Icon(
+    Icons.settings_rounded,
+    color: ink,
+    size: 23,
+  ),
+  style: IconButton.styleFrom(
+    backgroundColor: cream,
+    shape: const CircleBorder(),
+  ),
+  onPressed: () async {
+    final wasPaused = story.paused;
+    story.setPaused(true);
+
+    try {
+      await openSettings();
+    } finally {
+      if (mounted) {
+        story.setPaused(wasPaused);
+      }
+    }
+  },
+);
+
+  Future<void> openSettings() async {
+    final audio = AudioManager.instance;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black54,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: cream,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: AnimatedBuilder(
+            animation: AppLocalizations.instance,
+            builder: (context, _) => StatefulBuilder(
+              builder: (context, setDialogState) {
+                final isTr = AppLocalizations.instance.isTurkish;
+
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Başlık ve kapatma düğmesi.
+                      Row(
+                        children: [
+                          const Icon(Icons.settings_rounded, color: ink),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              isTr ? 'Ayarlar' : 'Settings',
+                              style: const TextStyle(
+                                color: ink,
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: isTr ? 'Kapat' : 'Close',
+                            onPressed: () => Navigator.pop(dialogContext),
+                            icon: const Icon(Icons.close_rounded),
+                            color: ink,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Müzik aç / kapat.
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        secondary: Icon(
+                          audio.musicMuted
+                              ? Icons.music_off_rounded
+                              : Icons.music_note_rounded,
+                          color: ink,
+                        ),
+                        title: Text(
+                          isTr ? 'Müzik' : 'Music',
+                          style: const TextStyle(
+                            color: ink,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        subtitle: Text(
+                          audio.musicMuted
+                              ? (isTr ? 'Kapalı' : 'Off')
+                              : (isTr ? 'Açık' : 'On'),
+                        ),
+                        value: !audio.musicMuted,
+                        onChanged: (enabled) {
+                          setDialogState(() {
+                            audio.setMusicMuted(!enabled);
+                          });
+                        },
+                      ),
+
+                      // Ses seviyesi.
+                      Row(
+                        children: [
+                          Icon(
+                            audio.effectiveMusicVolume == 0
+                                ? Icons.volume_off_rounded
+                                : Icons.volume_up_rounded,
+                            color: ink,
+                          ),
+                          Expanded(
+                            child: Slider(
+                              value: audio.musicVolume,
+                              min: 0,
+                              max: 1,
+                              divisions: 100,
+                              activeColor: ink,
+                              label: '${(audio.musicVolume * 100).round()}%',
+                              onChanged: audio.musicMuted
+                                  ? null
+                                  : (value) {
+                                      setDialogState(() {
+                                        audio.setMusicVolume(value);
+                                      });
+                                    },
+                            ),
+                          ),
+                          SizedBox(
+                            width: 44,
+                            child: Text(
+                              '${(audio.effectiveMusicVolume * 100).round()}%',
+                              textAlign: TextAlign.right,
+                              style: const TextStyle(
+                                color: ink,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 8),
+                      const Divider(),
+                      const SizedBox(height: 8),
+
+                      // Dil seçimi.
+                      Row(
+                        children: [
+                          const Icon(Icons.language_rounded, color: ink),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              isTr ? 'Dil' : 'Language',
+                              style: const TextStyle(
+                                color: ink,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          DropdownButton<String>(
+                            value: AppLocalizations.instance.languageCode,
+                            underline: const SizedBox.shrink(),
+                            dropdownColor: cream,
+                            style: const TextStyle(color: ink, fontSize: 14),
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'tr',
+                                child: Text('Türkçe'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'en',
+                                child: Text('English'),
+                              ),
+                            ],
+                            onChanged: (code) async {
+                              if (code == null) return;
+
+                              await AppLocalizations.instance.setLanguage(
+                                code,
+                                prefs: widget.prefs,
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
           ),
-        ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   // Tooltip dışarıda: içteki buton işaretçi almadığı için fareyle üzerine
   // gelince yine görünsün. manual mod onTapDown'ı geciktirmez.
@@ -521,21 +714,21 @@ class _StoryScreenState extends State<StoryScreen>
     VoidCallback action, {
     String sound = TapDownButton.clickSound,
   }) => Tooltip(
-        message: label,
-        triggerMode: TooltipTriggerMode.manual,
-        child: TapDownButton(
-          onTap: action,
-          sound: sound,
-          builder: (pressed) => IconButton.filledTonal(
-            onPressed: pressed,
-            style: IconButton.styleFrom(
-              backgroundColor: cream,
-              foregroundColor: ink,
-            ),
-            icon: Icon(icon, size: 20),
-          ),
+    message: label,
+    triggerMode: TooltipTriggerMode.manual,
+    child: TapDownButton(
+      onTap: action,
+      sound: sound,
+      builder: (pressed) => IconButton.filledTonal(
+        onPressed: pressed,
+        style: IconButton.styleFrom(
+          backgroundColor: cream,
+          foregroundColor: ink,
         ),
-      );
+        icon: Icon(icon, size: 20),
+      ),
+    ),
+  );
   Widget chapterBar() => Padding(
     padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
     child: Row(
@@ -644,9 +837,20 @@ class _StoryScreenState extends State<StoryScreen>
         'swallowed': story.swallowed,
       }),
       tr('chapter2.result.button'),
-      () => next(Scene.fishing),
+      () => next(Scene.fishHealing),
       eyebrow: tr('chapter2.result.eyebrow'),
       bookPage: 1,
+    ),
+    Scene.fishHealing => ChapterTwoHealingGame(
+      story: story,
+      onComplete: () => next(Scene.fishHealingResult),
+    ),
+    Scene.fishHealingResult => storyCard(
+      tr('chapter2.healing.resultTitle'),
+      tr('chapter2.healing.resultBody'),
+      tr('chapter2.healing.resultButton'),
+      () => next(Scene.fishing),
+      eyebrow: tr('chapter2.healing.resultEyebrow'),
     ),
     Scene.fishing => ChapterThreeFishing(story: story),
     Scene.catchWaste => storyCard(

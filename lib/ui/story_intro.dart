@@ -220,28 +220,35 @@ class _StoryIntroState extends State<StoryIntro> {
                             padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                             child: Row(
                               children: [
-                                TapDownButton(
-                                  onTap: _page == 0
-                                      ? null
-                                      : () => setState(() => _page--),
-                                  builder: (pressed) => OutlinedButton(
-                                    onPressed: pressed,
-                                    child: Text(isTr ? 'Geri' : 'Back'),
+                                Expanded(
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: TapDownButton(
+                                      onTap: _page == 0
+                                          ? null
+                                          : () => setState(() => _page--),
+                                      builder: (pressed) => OutlinedButton(
+                                        onPressed: pressed,
+                                        child: Text(isTr ? 'Geri' : 'Back'),
+                                      ),
+                                    ),
                                   ),
                                 ),
-                                Expanded(
+
+                                SizedBox(
+                                  width: 64,
                                   child: Text(
                                     '${_page + 1} / ${_images.length}',
                                     textAlign: TextAlign.center,
                                     style: const TextStyle(
                                       color: Color(0xFF244B43),
+                                      fontSize: 14,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
                                 ),
-                                Flexible(
-                                  flex: 2,
-                                  fit: FlexFit.tight,
+
+                                Expanded(
                                   child: Align(
                                     alignment: Alignment.centerRight,
                                     child: TapDownButton(
@@ -254,7 +261,7 @@ class _StoryIntroState extends State<StoryIntro> {
                                           ),
                                           foregroundColor: Colors.white,
                                           padding: const EdgeInsets.symmetric(
-                                            horizontal: 20,
+                                            horizontal: 12,
                                             vertical: 14,
                                           ),
                                         ),

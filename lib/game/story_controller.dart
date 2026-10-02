@@ -15,6 +15,8 @@ enum Scene {
   underwater,
   protection,
   protectionResult,
+  fishHealing,
+  fishHealingResult,
   fishing,
   catchWaste,
   inspection,
@@ -57,6 +59,48 @@ class StoryController extends ChangeNotifier {
   int swallowed = 0;
   int avoided = 0;
   int catches = 0;
+
+  // -1: healthy from the start; 0..3: treatment steps for five sick fish.
+  final List<int> healingTaps = [];
+  static const healingFishCount = 15;
+  static const sickFishCount = 5;
+  static const healingTapTarget = 3;
+  int get healedFish =>
+      healingTaps.where((taps) => taps == healingTapTarget).length;
+  bool get healingComplete => healedFish == sickFishCount;
+
+  void restoreHealing(List<int> values) {
+    if (values.length != healingFishCount ||
+        values.any((v) => v < -1 || v > healingTapTarget) ||
+        values.where((v) => v >= 0).length != sickFishCount)
+      return;
+    healingTaps
+      ..clear()
+      ..addAll(values);
+  }
+
+  void prepareHealing() {
+    if (healingTaps.isNotEmpty) return;
+    final indices = List.generate(healingFishCount, (i) => i)..shuffle(random);
+    final sick = indices.take(sickFishCount).toSet();
+    healingTaps.addAll(
+      List.generate(healingFishCount, (i) => sick.contains(i) ? 0 : -1),
+    );
+  }
+
+  bool healFish(int index) {
+    if (scene != Scene.fishHealing ||
+        paused ||
+        index < 0 ||
+        index >= healingTaps.length ||
+        healingTaps[index] < 0 ||
+        healingTaps[index] >= healingTapTarget)
+      return false;
+    healingTaps[index]++;
+    notifyListeners();
+    return true;
+  }
+
   int sortingMistakes = 0;
 
   bool paused = false;
@@ -168,7 +212,11 @@ class StoryController extends ChangeNotifier {
     Scene.rewind ||
     Scene.success => 1,
 
-    Scene.underwater || Scene.protection || Scene.protectionResult => 2,
+    Scene.underwater ||
+    Scene.protection ||
+    Scene.protectionResult ||
+    Scene.fishHealing ||
+    Scene.fishHealingResult => 2,
 
     _ => 3,
   };
@@ -190,6 +238,9 @@ class StoryController extends ChangeNotifier {
         firstCollected < secondTarget) {
       return;
     }
+
+    if (target == Scene.fishHealingResult && !healingComplete) return;
+    if (target == Scene.fishHealing) prepareHealing();
 
     scene = target;
 
@@ -225,6 +276,7 @@ class StoryController extends ChangeNotifier {
     // -------------------------------------------------
 
     if (target == Scene.protection) {
+      healingTaps.clear();
       resetWater(1);
 
       swallowed = 0;
@@ -297,6 +349,7 @@ class StoryController extends ChangeNotifier {
     sources.clear();
     found.clear();
     differenceFound.clear();
+    healingTaps.clear();
 
     waste.clear();
 
@@ -339,7 +392,8 @@ class StoryController extends ChangeNotifier {
     // müziği başlar; playBGM önce çalanı durdurur. Diğer bölümlerin müziği
     // henüz tanımlı değil.
     // 2 = CH2, 3 = CH3, 4 = final; aşağıdaki else dalı da CH1 girişine gider.
-    final resumesChapterOne = checkpoint < 2 || checkpoint > 4;
+    final resumesChapterOne =
+        checkpoint < 2 || checkpoint == 5 || checkpoint == 6;
     if (resumesChapterOne) {
       AudioManager.instance.playBGM('chapter_hikaye_bg.mp3');
     } else {
@@ -348,7 +402,11 @@ class StoryController extends ChangeNotifier {
 
     // 6 = Chapter 1 fark bulmaca sonuç ekranı
     // 5 = Chapter 1 fark bulmaca checkpoint'i
-    if (checkpoint == 6) {
+    if (checkpoint == 7 || checkpoint == 8) {
+      pages.addAll([0, 1]);
+      prepareHealing();
+      go(healingComplete ? Scene.fishHealingResult : Scene.fishHealing);
+    } else if (checkpoint == 6) {
       pages.add(0);
       go(Scene.differenceResult);
     } else if (checkpoint == 5) {

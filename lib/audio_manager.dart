@@ -1,5 +1,6 @@
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Oyunun tüm seslerini yöneten merkezi Singleton.
 ///
@@ -10,6 +11,51 @@ class AudioManager {
   AudioManager._();
 
   static final AudioManager instance = AudioManager._();
+  SharedPreferences? _musicPrefs;
+
+  double _musicVolume = 0.5;
+  bool _musicMuted = false;
+  Future<void> _musicSettingsQueue = Future<void>.value();
+
+  double get musicVolume => _musicVolume;
+  bool get musicMuted => _musicMuted;
+  double get effectiveMusicVolume => _musicMuted ? 0.0 : _musicVolume;
+
+  void loadMusicSettings(SharedPreferences? prefs) {
+    _musicPrefs = prefs;
+
+    _musicVolume = (prefs?.getDouble('music_volume') ?? 0.5)
+        .clamp(0.0, 1.0)
+        .toDouble();
+
+    _musicMuted = prefs?.getBool('music_muted') ?? false;
+  }
+
+  void setMusicVolume(double value) {
+    _musicVolume = value.clamp(0.0, 1.0).toDouble();
+    _applyMusicSettings();
+  }
+
+  void setMusicMuted(bool value) {
+    _musicMuted = value;
+    _applyMusicSettings();
+  }
+
+  void _applyMusicSettings() {
+    // Slider hareketleri sırayla uygulanır ve kaydedilir.
+    _musicSettingsQueue = _musicSettingsQueue.then((_) async {
+      await _safely(() async {
+        if (_initialized) {
+          await bgPlayer.setVolume(effectiveMusicVolume);
+        }
+      });
+
+      await _safely(() async {
+        await _musicPrefs?.setDouble('music_volume', _musicVolume);
+        await _musicPrefs?.setBool('music_muted', _musicMuted);
+      });
+    });
+  }
 
   static const _folder = 'audio/';
 
@@ -65,7 +111,7 @@ class AudioManager {
     await _safely(() async {
       await bgPlayer.setAudioContext(context);
       await bgPlayer.setReleaseMode(ReleaseMode.loop);
-      await bgPlayer.setVolume(0.5);
+      await bgPlayer.setVolume(effectiveMusicVolume);
     });
 
     for (final player in effectPlayers) {
@@ -96,7 +142,10 @@ class AudioManager {
     await _safely(() async {
       await bgPlayer.stop();
       await bgPlayer.setReleaseMode(ReleaseMode.loop);
-      await bgPlayer.play(AssetSource('$_folder$file'), volume: 0.5);
+      await bgPlayer.play(
+        AssetSource('$_folder$file'),
+        volume: effectiveMusicVolume,
+      );
     });
   }
 
@@ -123,7 +172,7 @@ class AudioManager {
       final finished = bgPlayer.onPlayerComplete.first;
       await bgPlayer.play(
         AssetSource('$_folder${_normalize(dosyaAdi)}'),
-        volume: 1.0,
+        volume: effectiveMusicVolume,
       );
       // Bitiş olayı gelmezse menü müziği yine de başlasın.
       await finished.timeout(const Duration(seconds: 6));
