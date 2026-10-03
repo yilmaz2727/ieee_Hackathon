@@ -23,7 +23,9 @@ class ChapterThreeFishing extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              StoryHeading(story.bite ? tr('chapter3.pullNow') : tr('chapter3.waitTitle')),
+              StoryHeading(
+                story.bite ? tr('chapter3.pullNow') : tr('chapter3.waitTitle'),
+              ),
               const SizedBox(height: 10),
               Text(
                 story.fishingHint,

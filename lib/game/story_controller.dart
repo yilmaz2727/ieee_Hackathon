@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../audio_manager.dart';
 import '../localization/app_localizations.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 enum Scene {
   home,
@@ -22,6 +23,7 @@ enum Scene {
   inspection,
   discovery,
   rewind,
+  fishPuzzle,
   prevention,
   cleanupSecond,
   retry,
@@ -60,6 +62,11 @@ class StoryController extends ChangeNotifier {
   int avoided = 0;
   int catches = 0;
 
+  int get chapterOneScore => firstCollected * 10;
+  int get chapterTwoScore => max(0, (avoided * 1) - (swallowed * 5));
+  int get chapterFourScore => preventionCorrect * 20;
+  int get liveTotalScore =>
+      chapterOneScore + chapterTwoScore + chapterFourScore;
   // -1: healthy from the start; 0..3: treatment steps for five sick fish.
   final List<int> healingTaps = [];
   static const healingFishCount = 15;
@@ -72,8 +79,9 @@ class StoryController extends ChangeNotifier {
   void restoreHealing(List<int> values) {
     if (values.length != healingFishCount ||
         values.any((v) => v < -1 || v > healingTapTarget) ||
-        values.where((v) => v >= 0).length != sickFishCount)
+        values.where((v) => v >= 0).length != sickFishCount) {
       return;
+    }
     healingTaps
       ..clear()
       ..addAll(values);
@@ -94,8 +102,9 @@ class StoryController extends ChangeNotifier {
         index < 0 ||
         index >= healingTaps.length ||
         healingTaps[index] < 0 ||
-        healingTaps[index] >= healingTapTarget)
+        healingTaps[index] >= healingTapTarget) {
       return false;
+    }
     healingTaps[index]++;
     notifyListeners();
     return true;
@@ -811,7 +820,10 @@ class StoryController extends ChangeNotifier {
           'ana_menu_bg.mp3',
         );
         go(Scene.protectionResult);
-
+        SharedPreferences.getInstance().then((prefs) {
+          prefs.setInt('healing_score', chapterTwoScore);
+          prefs.setInt('chapter2_score', chapterTwoScore);
+        });
         return;
       }
     }

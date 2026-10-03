@@ -1,15 +1,23 @@
 import 'dart:math';
 
 import 'audio_manager.dart';
+
 import 'ui/story_intro.dart';
+
 import 'features/book/book_sheet.dart';
+
 import 'features/chapters/chapters.dart';
+
 import 'features/final_challenge/final_challenge.dart';
-import 'features/impact/impact_screen.dart';
+
+import 'features/cleanup_verification/services/local_database_service.dart';
 
 import 'package:flame/game.dart';
+
 import 'package:flutter/material.dart' hide Badge;
+
 import 'package:flutter/services.dart';
+
 import 'package:flutter/scheduler.dart';
 
 import 'ui/water_scene.dart';
@@ -17,52 +25,91 @@ import 'ui/water_scene.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'game/lake_game.dart';
+
 import 'game/story_controller.dart';
+
 import 'localization/app_localizations.dart';
+
 import 'services/certificate.dart';
+
 import 'ui/widgets.dart';
+
+import 'features/auth/presentation/screens/login_screen.dart';
+
+import 'features/impact/fish_puzzle_screen.dart';
+
+import 'features/cleanup_verification/presentation/screens/final_mission_screen.dart';
+
+import 'features/cleanup_verification/presentation/screens/cleaned_spots_map_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   SharedPreferences? prefs;
+
   try {
     prefs = await SharedPreferences.getInstance();
   } catch (_) {
     /* Play without persistence. */
   }
+
   await AppLocalizations.instance.loadInitial(prefs);
+
   AudioManager.instance.loadMusicSettings(prefs);
+
   await AudioManager.init();
+
   runApp(EsmaApp(prefs: prefs));
 }
 
 class EsmaApp extends StatelessWidget {
   const EsmaApp({super.key, this.prefs, this.controller});
+
   final StoryController? controller;
+
   final SharedPreferences? prefs;
+
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: AppLocalizations.instance,
-    builder: (context, _) => MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: tr('app.title'),
-      theme: ThemeData(
-        useMaterial3: true,
-        fontFamily: 'StorySans',
-        colorScheme: ColorScheme.fromSeed(seedColor: ink, surface: cream),
-        textTheme: const TextTheme(
-          bodyMedium: TextStyle(color: ink, fontSize: 14, height: 1.5),
+
+    builder: (context, _) {
+      final rawUserId = prefs?.get('current_user_id');
+
+      final bool hasUser = rawUserId != null && rawUserId.toString().isNotEmpty;
+
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+
+        title: tr('app.title'),
+
+        theme: ThemeData(
+          useMaterial3: true,
+
+          fontFamily: 'StorySans',
+
+          colorScheme: ColorScheme.fromSeed(seedColor: ink, surface: cream),
+
+          textTheme: const TextTheme(
+            bodyMedium: TextStyle(color: ink, fontSize: 14, height: 1.5),
+          ),
         ),
-      ),
-      home: StoryScreen(prefs: prefs, controller: controller),
-    ),
+
+        home: hasUser
+            ? StoryScreen(prefs: prefs, controller: controller)
+            : LoginScreen(prefs: prefs),
+      );
+    },
   );
 }
 
 class StoryScreen extends StatefulWidget {
   const StoryScreen({super.key, this.prefs, this.controller});
+
   final StoryController? controller;
+
   final SharedPreferences? prefs;
+
   @override
   State<StoryScreen> createState() => _StoryScreenState();
 }
@@ -70,57 +117,119 @@ class StoryScreen extends StatefulWidget {
 class _StoryScreenState extends State<StoryScreen>
     with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   late final StoryController story;
+
   late final LakeGame game;
+
   late final Ticker storyTicker;
+
   Duration? previousFrame;
+
   final nameController = TextEditingController();
+
   final nameForm = GlobalKey<FormState>();
+
   bool exporting = false, lifecyclePaused = false;
+
   String? exportingLanguage;
+
   int savedChapter = 0;
+
   String _savedDifferenceSignature = '';
+
   String _savedHealingSignature = '';
+
   Scene lastScene = Scene.home;
+
   Future<void> saveQueue = Future.value();
+
   bool startingAdventure = false;
+
   bool get atHome => story.scene == Scene.home;
+
+  void _persistTotalScore() {
+    final prefs = widget.prefs;
+    if (prefs == null) return;
+
+    final puzzleScore = prefs.getInt('puzzle_score') ?? 0;
+    final bonusScore = prefs.getInt('bonus_score') ?? 0;
+    final totalScore = story.liveTotalScore + puzzleScore + bonusScore;
+
+    saveQueue = saveQueue
+        .then((_) async {
+          await prefs.setInt('cleanup_count', story.firstCollected);
+          await prefs.setInt('cleanup_score', story.chapterOneScore);
+          await prefs.setInt('fish_saved', story.avoided);
+          await prefs.setInt('fish_swallowed', story.swallowed);
+          await prefs.setInt('healing_score', story.chapterTwoScore);
+          await prefs.setInt('chapter2_score', story.chapterTwoScore);
+          await prefs.setInt('quiz_correct', story.preventionCorrect);
+          await prefs.setInt('quiz_score', story.chapterFourScore);
+          await prefs.setInt('total_score', totalScore);
+          await LocalDatabaseService.setTotalScore(totalScore);
+        })
+        .catchError((Object _) {});
+  }
+
   @override
   void initState() {
     super.initState();
+
     AudioManager.instance.playBGM('ana_menu_bg.mp3');
+
     story = widget.controller ?? StoryController();
+
     WidgetsBinding.instance.addObserver(this);
+
     game = LakeGame(story);
+
     savedChapter = widget.prefs?.getInt('chapter') ?? 0;
+
+    // Restore the real gameplay counters used by the certificate and score.
+    story.firstCollected = widget.prefs?.getInt('cleanup_count') ?? 0;
+    story.avoided = widget.prefs?.getInt('fish_saved') ?? 0;
+    story.swallowed = widget.prefs?.getInt('fish_swallowed') ?? 0;
+    story.preventionCorrect = widget.prefs?.getInt('quiz_correct') ?? 0;
 
     final savedDifferences =
         widget.prefs?.getStringList('chapter1_difference_found') ??
         const <String>[];
+
     story.differenceFound.addAll(
       savedDifferences
           .map(int.tryParse)
           .whereType<int>()
           .where((index) => index >= 0 && index < 5),
     );
+
     _savedDifferenceSignature = _differenceSignature();
+
     final savedHealing = widget.prefs?.getStringList('chapter2_healing_taps');
+
     if (savedHealing != null) {
       story.restoreHealing(
         savedHealing.map((v) => int.tryParse(v) ?? -99).toList(),
       );
     }
+
     _savedHealingSignature = story.healingTaps.join(',');
 
     story.completed = widget.prefs?.getBool('completed') ?? false;
+
     story.completedAt = DateTime.tryParse(
       widget.prefs?.getString('completedAt') ?? '',
     );
+
     if (story.completed) story.pages.addAll([0, 1, 2, 3, 4]);
+
     story.addListener(onStory);
+
     AppLocalizations.instance.addListener(_onLanguageChanged);
+
     storyTicker = createTicker((elapsed) {
       final previous = previousFrame;
+
       previousFrame = elapsed;
+
       if (previous != null) {
         story.tick((elapsed - previous).inMicroseconds / 1000000);
       }
@@ -131,17 +240,29 @@ class _StoryScreenState extends State<StoryScreen>
   // final şimdilik sessiz. photo, impactMap ve reward listede yok: finalden
   // sonra zaten sessizler, ana menüden açılınca menü müziği sürer.
   static const _silentScenes = {
+    Scene.underwater,
+    Scene.protection,
+    Scene.protectionResult,
+    Scene.fishHealing,
+    Scene.fishHealingResult,
     Scene.fishing,
+
     Scene.catchWaste,
+
     Scene.inspection,
+
     Scene.discovery,
+
     Scene.rewind,
+
     Scene.prevention,
+
     Scene.success,
   };
 
   String _differenceSignature() {
     final values = story.differenceFound.toList()..sort();
+
     return values.join(',');
   }
 
@@ -149,15 +270,21 @@ class _StoryScreenState extends State<StoryScreen>
     final current = story.scene;
 
     // Fark bulmacasında bulunan noktaları ayrıca sakla. Böylece ana menüye
+
     // dönüldüğünde ve uygulama yeniden açıldığında bulunan farklar korunur.
+
     final differenceSignature = _differenceSignature();
+
     if (differenceSignature != _savedDifferenceSignature) {
       _savedDifferenceSignature = differenceSignature;
+
       final values = story.differenceFound.map((e) => '$e').toList()..sort();
+
       saveQueue = saveQueue
           .then((_) async {
             await widget.prefs?.setStringList(
               'chapter1_difference_found',
+
               values,
             );
           })
@@ -165,9 +292,12 @@ class _StoryScreenState extends State<StoryScreen>
     }
 
     final healingSignature = story.healingTaps.join(',');
+
     if (healingSignature != _savedHealingSignature) {
       _savedHealingSignature = healingSignature;
+
       final values = story.healingTaps.map((v) => '$v').toList();
+
       saveQueue = saveQueue
           .then((_) async {
             await widget.prefs?.setStringList('chapter2_healing_taps', values);
@@ -179,7 +309,10 @@ class _StoryScreenState extends State<StoryScreen>
 
     lastScene = current;
 
+    _persistTotalScore();
+
     // Ana menüye her dönüşte menü müziği.
+
     if (current == Scene.home) {
       AudioManager.instance.playBGM('ana_menu_bg.mp3');
     }
@@ -193,6 +326,7 @@ class _StoryScreenState extends State<StoryScreen>
         (current == Scene.firstResult && story.firstCollected >= 10);
 
     // Mevcut kayıt sistemi + Chapter 1 içi fark bulmaca checkpoint'i.
+
     if (current == Scene.intro ||
         current == Scene.underwater ||
         current == Scene.fishing ||
@@ -219,6 +353,7 @@ class _StoryScreenState extends State<StoryScreen>
       saveQueue = saveQueue
           .then((_) async {
             await widget.prefs?.setInt('chapter', chapter);
+
             await widget.prefs?.setBool('completed', complete);
 
             if (date != null) {
@@ -229,12 +364,15 @@ class _StoryScreenState extends State<StoryScreen>
     }
 
     // -------------------------------------------------
+
     // CHAPTER BİTİNCE KİTABI OTOMATİK AÇ
+
     // -------------------------------------------------
 
     final int? automaticBookPage;
 
     // Chapter 1 tamamlandı.
+
     if (current == Scene.firstResult && story.firstCollected >= 10) {
       automaticBookPage = 0;
     }
@@ -254,9 +392,11 @@ class _StoryScreenState extends State<StoryScreen>
 
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         // Önce sonuç ekranının çizilmesine izin veriyoruz.
+
         await Future<void>.delayed(const Duration(milliseconds: 300));
 
         // Kullanıcı başka ekrana geçtiyse açma.
+
         if (!mounted || story.scene != current) return;
 
         await book(initial: pageToOpen);
@@ -266,25 +406,33 @@ class _StoryScreenState extends State<StoryScreen>
 
   void _onLanguageChanged() {
     if (!mounted) return;
+
     story.fishingHint = tr('story.fishing.initial');
+
     story.sortingHint = tr('story.sorting.initial');
+
     setState(() {});
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     previousFrame = null;
+
     // Arka planda ses çalmasın; dönüşte müzik kaldığı yerden sürsün.
+
     if (state == AppLifecycleState.resumed) {
       AudioManager.instance.resumeFromBackground();
     } else {
       AudioManager.instance.pauseForBackground();
     }
+
     if (state != AppLifecycleState.resumed && !story.paused) {
       lifecyclePaused = true;
+
       story.setPaused(true);
     } else if (state == AppLifecycleState.resumed && lifecyclePaused) {
       lifecyclePaused = false;
+
       story.setPaused(false);
     }
   }
@@ -292,51 +440,74 @@ class _StoryScreenState extends State<StoryScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+
     story.removeListener(onStory);
+
     AppLocalizations.instance.removeListener(_onLanguageChanged);
+
     storyTicker.dispose();
+
     if (widget.controller == null) story.dispose();
+
     nameController.dispose();
+
     super.dispose();
   }
 
   void next(Scene s) => story.go(s);
+
   Future<void> book({int? initial}) async {
     story.setPaused(true);
+
     await showModalBottomSheet<void>(
       context: context,
+
       isScrollControlled: true,
+
       backgroundColor: Colors.transparent,
+
       builder: (context) => BookSheet(pages: story.pages, initial: initial),
     );
+
     if (mounted) story.setPaused(false);
   }
 
   Future<void> pauseMenu() async {
     story.setPaused(true);
+
     final leave = await showDialog<bool>(
       context: context,
+
       builder: (context) => AlertDialog(
         backgroundColor: cream,
+
         title: Text(tr('pause.title')),
+
         content: Text(tr('pause.body')),
+
         actions: [
           TapDownButton(
             onTap: () => Navigator.pop(context, true),
+
             builder: (pressed) =>
                 TextButton(onPressed: pressed, child: Text(tr('common.home'))),
           ),
+
           TapDownButton(
             onTap: () => Navigator.pop(context, false),
+
             builder: (pressed) => FilledButton(
               onPressed: pressed,
+
               child: Text(tr('common.continue')),
             ),
           ),
         ],
       ),
     );
+
     if (!mounted) return;
+
     if (leave == true) {
       next(Scene.home);
     } else {
@@ -346,38 +517,52 @@ class _StoryScreenState extends State<StoryScreen>
 
   Future<void> newGame() async {
     // onTapDown hızlı art arda dokunuşlarda iki kez tetiklenebilir.
+
     if (startingAdventure) return;
+
     startingAdventure = true;
+
     try {
       if (savedChapter > 0) {
         final ok = await showDialog<bool>(
           context: context,
+
           builder: (context) => AlertDialog(
             title: Text(tr('newGame.title')),
+
             content: Text(tr('newGame.body')),
+
             actions: [
               TapDownButton(
                 onTap: () => Navigator.pop(context, false),
+
                 builder: (pressed) => TextButton(
                   onPressed: pressed,
+
                   child: Text(tr('common.cancel')),
                 ),
               ),
+
               TapDownButton(
                 onTap: () => Navigator.pop(context, true),
+
                 builder: (pressed) => FilledButton(
                   onPressed: pressed,
+
                   child: Text(tr('newGame.restart')),
                 ),
               ),
             ],
           ),
         );
+
         if (ok != true) return;
       }
+
       if (!mounted) return;
 
       // Menü müziği durur; StoryIntro hikâye müziğini başlatır.
+
       AudioManager.instance.stopBGM();
 
       final start = await Navigator.of(
@@ -385,13 +570,19 @@ class _StoryScreenState extends State<StoryScreen>
       ).push<bool>(MaterialPageRoute<bool>(builder: (_) => const StoryIntro()));
 
       if (!mounted) return;
+
       if (start != true) {
         // Hikâyeden geri tuşuyla çıkıldı: menüye ve müziğine dön.
+
         AudioManager.instance.playBGM('ana_menu_bg.mp3');
+
         return;
       }
 
+      await _resetPersistedGameProgress();
       story.startNew();
+      savedChapter = 0;
+      _persistTotalScore();
     } finally {
       startingAdventure = false;
     }
@@ -400,77 +591,102 @@ class _StoryScreenState extends State<StoryScreen>
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: const Color(0xffe6eddf),
+
     body: LayoutBuilder(
       builder: (context, outer) {
         return Center(
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
+
             children: [
               Flexible(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 500),
+
                   child: ClipRect(
                     child: AnimatedBuilder(
                       animation: story,
+
                       child: GameWidget(game: game),
+
                       builder: (context, gameView) => Stack(
                         fit: StackFit.expand,
+
                         children: [
                           WaterScene(story: story),
+
                           if (story.scene == Scene.fishHealing ||
                               story.scene == Scene.underwater ||
                               story.scene == Scene.inspection)
                             const ColoredBox(color: Color(0xb5195e69)),
+
                           if (story.scene == Scene.fishing)
                             LayoutBuilder(
                               builder: (context, constraints) {
                                 return GestureDetector(
                                   behavior: HitTestBehavior.opaque,
+
                                   onTapUp: (details) {
                                     story.castFishingAt(
                                       details.localPosition.dx /
                                           constraints.maxWidth,
+
                                       details.localPosition.dy /
                                           constraints.maxHeight,
                                     );
                                   },
+
                                   child: gameView!,
                                 );
                               },
                             )
                           else
                             gameView!,
+
                           if (atHome || story.scene == Scene.intro)
                             const DecoratedBox(
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
                                   begin: Alignment.topCenter,
+
                                   end: Alignment.bottomCenter,
+
                                   colors: [
                                     Color(0xdffff9e9),
+
                                     Colors.transparent,
+
                                     Color(0x99234331),
                                   ],
+
                                   stops: [0, .38, 1],
                                 ),
                               ),
                             ),
+
                           SafeArea(
                             child: Column(
                               children: [
-                                header(),
+                                if (story.scene != Scene.photo &&
+                                    story.scene != Scene.impactMap &&
+                                    story.scene != Scene.fishPuzzle)
+                                  header(),
+
                                 if (!atHome &&
                                     story.scene != Scene.rewind &&
                                     story.scene != Scene.prevention &&
                                     story.scene != Scene.success &&
                                     story.scene != Scene.reward &&
                                     story.scene != Scene.photo &&
-                                    story.scene != Scene.impactMap)
+                                    story.scene != Scene.impactMap &&
+                                    story.scene != Scene.fishPuzzle)
                                   chapterBar(),
+
                                 if (story.scene == Scene.intro ||
                                     story.scene == Scene.cleanupFirst ||
                                     story.scene == Scene.firstResult)
                                   waterStatus(),
+
                                 Expanded(child: body()),
                               ],
                             ),
@@ -487,42 +703,126 @@ class _StoryScreenState extends State<StoryScreen>
       },
     ),
   );
+
   Widget header() => Padding(
     padding: const EdgeInsets.fromLTRB(18, 12, 18, 4),
+
     child: Row(
       children: [
         Container(
           width: 35,
+
           height: 35,
+
           decoration: BoxDecoration(
             color: cream.withValues(alpha: .95),
+
             borderRadius: BorderRadius.circular(12),
           ),
+
           child: const Icon(Icons.water_drop_rounded, size: 20, color: ink),
         ),
+
         const SizedBox(width: 9),
+
         Expanded(
           child: Text(
             tr('brand.name'),
+
             style: TextStyle(
               color: ink,
+
               fontWeight: FontWeight.bold,
+
               fontSize: 9,
+
               letterSpacing: 1.3,
+
               height: 1.55,
             ),
           ),
         ),
+
         const SizedBox(width: 6),
+
+        // --- YENİ: TÜM OYUN BOYUNCA CANLI GÜNCELLENEN PUAN SAYACI ---
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+
+          decoration: BoxDecoration(
+            color: const Color(0xFFFEF3C7), // Altın/Krem sarısı zemin
+
+            borderRadius: BorderRadius.circular(16),
+
+            border: Border.all(color: const Color(0xFFF59E0B), width: 1.2),
+
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black12,
+
+                blurRadius: 4,
+
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+
+            children: [
+              const Icon(
+                Icons.stars_rounded,
+                color: Color(0xFFD97706),
+                size: 18,
+              ),
+
+              const SizedBox(width: 4),
+
+              AnimatedBuilder(
+                animation: story,
+
+                builder: (context, _) {
+                  // Canlı skor + puzzle + gerçek görev bonusu
+                  final puzzleScore = widget.prefs?.getInt('puzzle_score') ?? 0;
+                  final bonusScore = widget.prefs?.getInt('bonus_score') ?? 0;
+                  final totalDisplayScore =
+                      story.liveTotalScore + puzzleScore + bonusScore;
+
+                  return Text(
+                    '$totalDisplayScore P',
+
+                    style: const TextStyle(
+                      color: Color(0xFF92400E),
+
+                      fontWeight: FontWeight.w900,
+
+                      fontSize: 12,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(width: 8),
+
         settingsButton(),
+
         if (!atHome && story.scene != Scene.cleanupFirst)
           circleButton(
             Icons.menu_book_rounded,
+
             tr('header.book'),
+
             () => book(),
+
             sound: TapDownButton.bookSound,
           ),
+
         const SizedBox(width: 6),
+
         if (!atHome && story.scene != Scene.cleanupFirst)
           circleButton(Icons.pause_rounded, tr('header.pause'), pauseMenu),
       ],
@@ -561,73 +861,102 @@ class _StoryScreenState extends State<StoryScreen>
 
     await showDialog<void>(
       context: context,
+
       barrierDismissible: true,
+
       barrierColor: Colors.black54,
+
       builder: (dialogContext) => Dialog(
         backgroundColor: cream,
+
         insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 360),
+
           child: AnimatedBuilder(
             animation: AppLocalizations.instance,
+
             builder: (context, _) => StatefulBuilder(
               builder: (context, setDialogState) {
                 final isTr = AppLocalizations.instance.isTurkish;
 
                 return SingleChildScrollView(
                   padding: const EdgeInsets.all(20),
+
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
+
                     crossAxisAlignment: CrossAxisAlignment.start,
+
                     children: [
                       // Başlık ve kapatma düğmesi.
                       Row(
                         children: [
                           const Icon(Icons.settings_rounded, color: ink),
+
                           const SizedBox(width: 10),
+
                           Expanded(
                             child: Text(
                               isTr ? 'Ayarlar' : 'Settings',
+
                               style: const TextStyle(
                                 color: ink,
+
                                 fontSize: 22,
+
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
                           ),
+
                           IconButton(
                             tooltip: isTr ? 'Kapat' : 'Close',
+
                             onPressed: () => Navigator.pop(dialogContext),
+
                             icon: const Icon(Icons.close_rounded),
+
                             color: ink,
                           ),
                         ],
                       ),
+
                       const SizedBox(height: 12),
 
                       // Müzik aç / kapat.
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
+
                         secondary: Icon(
                           audio.musicMuted
                               ? Icons.music_off_rounded
                               : Icons.music_note_rounded,
+
                           color: ink,
                         ),
+
                         title: Text(
                           isTr ? 'Müzik' : 'Music',
+
                           style: const TextStyle(
                             color: ink,
+
                             fontWeight: FontWeight.bold,
                           ),
                         ),
+
                         subtitle: Text(
                           audio.musicMuted
                               ? (isTr ? 'Kapalı' : 'Off')
                               : (isTr ? 'Açık' : 'On'),
                         ),
+
                         value: !audio.musicMuted,
+
                         onChanged: (enabled) {
                           setDialogState(() {
                             audio.setMusicMuted(!enabled);
@@ -642,16 +971,24 @@ class _StoryScreenState extends State<StoryScreen>
                             audio.effectiveMusicVolume == 0
                                 ? Icons.volume_off_rounded
                                 : Icons.volume_up_rounded,
+
                             color: ink,
                           ),
+
                           Expanded(
                             child: Slider(
                               value: audio.musicVolume,
+
                               min: 0,
+
                               max: 1,
+
                               divisions: 100,
+
                               activeColor: ink,
+
                               label: '${(audio.musicVolume * 100).round()}%',
+
                               onChanged: audio.musicMuted
                                   ? null
                                   : (value) {
@@ -661,13 +998,18 @@ class _StoryScreenState extends State<StoryScreen>
                                     },
                             ),
                           ),
+
                           SizedBox(
                             width: 44,
+
                             child: Text(
                               '${(audio.effectiveMusicVolume * 100).round()}%',
+
                               textAlign: TextAlign.right,
+
                               style: const TextStyle(
                                 color: ink,
+
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -676,43 +1018,59 @@ class _StoryScreenState extends State<StoryScreen>
                       ),
 
                       const SizedBox(height: 8),
+
                       const Divider(),
+
                       const SizedBox(height: 8),
 
                       // Dil seçimi.
                       Row(
                         children: [
                           const Icon(Icons.language_rounded, color: ink),
+
                           const SizedBox(width: 12),
+
                           Expanded(
                             child: Text(
                               isTr ? 'Dil' : 'Language',
+
                               style: const TextStyle(
                                 color: ink,
+
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
                           ),
+
                           DropdownButton<String>(
                             value: AppLocalizations.instance.languageCode,
+
                             underline: const SizedBox.shrink(),
+
                             dropdownColor: cream,
+
                             style: const TextStyle(color: ink, fontSize: 14),
+
                             items: const [
                               DropdownMenuItem(
                                 value: 'tr',
+
                                 child: Text('Türkçe'),
                               ),
+
                               DropdownMenuItem(
                                 value: 'en',
+
                                 child: Text('English'),
                               ),
                             ],
+
                             onChanged: (code) async {
                               if (code == null) return;
 
                               await AppLocalizations.instance.setLanguage(
                                 code,
+
                                 prefs: widget.prefs,
                               );
                             },
@@ -731,47 +1089,69 @@ class _StoryScreenState extends State<StoryScreen>
   }
 
   // Tooltip dışarıda: içteki buton işaretçi almadığı için fareyle üzerine
+
   // gelince yine görünsün. manual mod onTapDown'ı geciktirmez.
+
   Widget circleButton(
     IconData icon,
+
     String label,
+
     VoidCallback action, {
+
     String sound = TapDownButton.clickSound,
   }) => Tooltip(
     message: label,
+
     triggerMode: TooltipTriggerMode.manual,
+
     child: TapDownButton(
       onTap: action,
+
       sound: sound,
+
       builder: (pressed) => IconButton.filledTonal(
         onPressed: pressed,
+
         style: IconButton.styleFrom(
           backgroundColor: cream,
+
           foregroundColor: ink,
         ),
+
         icon: Icon(icon, size: 20),
       ),
     ),
   );
+
   Widget chapterBar() => Padding(
     padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+
     child: Row(
       children: [
         for (var i = 1; i <= 3; i++)
           Expanded(
             child: Container(
               margin: EdgeInsets.only(right: i == 3 ? 0 : 6),
+
               padding: const EdgeInsets.symmetric(vertical: 8),
+
               decoration: BoxDecoration(
                 color: story.chapter == i ? ink : cream.withValues(alpha: .90),
+
                 borderRadius: BorderRadius.circular(12),
               ),
+
               child: Text(
                 '$i  ${tr('chapter.short.$i')}',
+
                 textAlign: TextAlign.center,
+
                 style: TextStyle(
                   fontSize: 10,
+
                   fontWeight: FontWeight.bold,
+
                   color: story.chapter == i ? cream : ink,
                 ),
               ),
@@ -780,175 +1160,262 @@ class _StoryScreenState extends State<StoryScreen>
       ],
     ),
   );
+
   Widget waterStatus() => Padding(
     padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
+
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+
       decoration: BoxDecoration(
         color: cream.withValues(alpha: .94),
+
         borderRadius: BorderRadius.circular(12),
       ),
+
       child: Column(
         children: [
           Row(
             children: [
               const Icon(Icons.water_drop_outlined, size: 15, color: ink),
+
               const SizedBox(width: 6),
+
               Expanded(
                 child: Text(
                   tr('water.progress', {
                     'percent': (story.clarity * 100).round(),
                   }),
+
                   style: const TextStyle(fontSize: 10, color: ink),
                 ),
               ),
+
               Text(
                 story.clarity >= 1 ? tr('water.clear') : tr('water.murky'),
+
                 style: const TextStyle(fontSize: 10, color: ink),
               ),
             ],
           ),
+
           const SizedBox(height: 4),
+
           LinearProgressIndicator(
             value: story.clarity,
+
             minHeight: 4,
+
             color: ink,
+
             backgroundColor: const Color(0xffded8bc),
           ),
         ],
       ),
     ),
   );
+
   Widget body() => switch (story.scene) {
     Scene.home => home(),
+
     Scene.intro => ChapterOneIntro(onStart: () => next(Scene.cleanupFirst)),
+
     Scene.cleanupFirst => ChapterOne(story: story),
+
     Scene.cleanupSecond => cleanup(),
+
     Scene.firstResult =>
       story.firstCollected >= 10
           ? storyCard(
               tr('chapter1.result.successTitle', {
                 'count': story.firstCollected,
               }),
+
               tr('chapter1.result.successBody', {
                 'score': story.firstCollected * 10,
               }),
+
               tr('chapter1.result.continue'),
+
               () => next(Scene.differencePuzzle),
+
               eyebrow: tr('chapter1.result.successEyebrow'),
+
               bookPage: 0,
             )
           : storyCard(
               tr('chapter1.result.failTitle', {'count': story.firstCollected}),
+
               tr('chapter1.result.failBody'),
+
               tr('common.retry'),
+
               () => next(Scene.cleanupFirst),
+
               eyebrow: tr('chapter1.result.failEyebrow'),
             ),
+
     Scene.differencePuzzle => ChapterOneDifferenceGame(
       story: story,
+
       onComplete: () => next(Scene.differenceResult),
     ),
+
     Scene.differenceResult => ChapterOneDifferenceResult(
       onContinue: () => next(Scene.underwater),
     ),
+
     Scene.underwater => ChapterTwoIntro(onStart: () => next(Scene.protection)),
+
     Scene.protection => ChapterTwoGame(story: story),
+
     Scene.protectionResult => storyCard(
       tr('chapter2.result.title'),
+
       tr('chapter2.result.body', {
         'avoided': story.avoided,
+
         'swallowed': story.swallowed,
       }),
+
       tr('chapter2.result.button'),
+
       () => next(Scene.fishHealing),
+
       eyebrow: tr('chapter2.result.eyebrow'),
+
       bookPage: 1,
     ),
+
     Scene.fishHealing => ChapterTwoHealingGame(
       story: story,
+
       onComplete: () => next(Scene.fishHealingResult),
     ),
+
     Scene.fishHealingResult => storyCard(
       tr('chapter2.healing.resultTitle'),
+
       tr('chapter2.healing.resultBody'),
+
       tr('chapter2.healing.resultButton'),
+
       () => next(Scene.fishing),
+
       eyebrow: tr('chapter2.healing.resultEyebrow'),
     ),
+
     Scene.fishing => ChapterThreeFishing(story: story),
+
     Scene.catchWaste => storyCard(
       tr('chapter3.catch.title'),
+
       tr('chapter3.catch.body', {
         'item': story.catches == 1
             ? tr('chapter3.catch.straw')
             : tr('chapter3.catch.can'),
       }),
+
       tr('chapter3.catch.button'),
+
       () => next(Scene.fishing),
+
       eyebrow: tr('chapter3.catch.eyebrow', {'count': story.catches}),
     ),
+
     Scene.inspection => ChapterThreeInspection(
       story: story,
+
       onOpenBook: () => book(initial: 2),
+
       onComplete: () => next(Scene.discovery),
     ),
+
     Scene.discovery => storyCard(
       tr('chapter3.discovery.title'),
+
       tr('chapter3.discovery.body'),
+
       tr('chapter3.discovery.button'),
-      () => next(Scene.rewind),
+
+      () => next(Scene.fishPuzzle),
+
       eyebrow: tr('chapter3.discovery.eyebrow'),
+
       bookPage: 3,
     ),
+
     Scene.rewind => rewind(),
+
     Scene.prevention => PreventionChallenge(story: story),
+
     Scene.retry => storyCard(
       tr('legacy.retry.title'),
+
       tr('legacy.retry.body'),
+
       tr('legacy.retry.button'),
+
       () => next(Scene.cleanupSecond),
+
       eyebrow: tr('legacy.retry.eyebrow'),
     ),
+
     Scene.success => FinalSuccessScreen(
       story: story,
+
       onContinue: () => next(Scene.photo),
     ),
+
+    // 1. SADECE PUZZLE:
+    Scene.fishPuzzle => FishPuzzleScreen(onFinish: () => next(Scene.rewind)),
+
     Scene.reward => reward(),
-    Scene.photo => ImpactScreen(
-      prefs: widget.prefs,
-      allowCreate: true,
-      onFinish: () => next(Scene.impactMap),
-    ),
-    Scene.impactMap => ImpactScreen(
-      prefs: widget.prefs,
-      allowCreate: false,
-      onFinish: () => next(story.completed ? Scene.reward : Scene.home),
+
+    // 2. TESTTEN SONRA AI FOTOĞRAF DOĞRULAMA (Gerçek Görev):
+    Scene.photo => const FinalMissionScreen(),
+
+    // 3. ONAYDAN SONRAKİ TOPLULUK HARİTASI:
+    Scene.impactMap => CleanedSpotsMapScreen(
+      onBack: () => next(story.completed ? Scene.reward : Scene.home),
     ),
   };
+
   Widget home() => LayoutBuilder(
     builder: (context, constraints) => SingleChildScrollView(
       child: ConstrainedBox(
         constraints: BoxConstraints(minHeight: constraints.maxHeight),
+
         child: IntrinsicHeight(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(24, 8, 24, 18),
+
             child: Column(
               children: [
                 const SizedBox(height: 9),
+
                 Text(
                   tr('home.title'),
+
                   textAlign: TextAlign.center,
+
                   style: TextStyle(
                     fontFamily: 'StorySerif',
+
                     fontSize: 42,
+
                     height: 1.07,
+
                     color: Color(0xfffff4d6),
+
                     fontWeight: FontWeight.bold,
+
                     shadows: [
                       Shadow(
                         color: Color(0x99000000),
+
                         blurRadius: 8,
+
                         offset: Offset(0, 2),
                       ),
                     ],
@@ -959,71 +1426,103 @@ class _StoryScreenState extends State<StoryScreen>
 
                 Text(
                   tr('home.subtitle'),
+
                   textAlign: TextAlign.center,
+
                   style: TextStyle(
                     color: Color(0xfffff4d6),
+
                     fontSize: 12,
+
                     fontWeight: FontWeight.w500,
+
                     shadows: [
                       Shadow(
                         color: Color(0xaa000000),
+
                         blurRadius: 5,
+
                         offset: Offset(0, 1),
                       ),
                     ],
                   ),
                 ),
+
                 const Spacer(),
+
                 Paper(
                   padding: const EdgeInsets.all(18),
+
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
+
                     children: [
                       Text(
                         tr('home.cardTitle'),
+
                         style: TextStyle(
                           fontFamily: 'StorySerif',
+
                           fontSize: 18,
+
                           fontWeight: FontWeight.bold,
+
                           color: ink,
                         ),
                       ),
+
                       const SizedBox(height: 8),
+
                       Text(
                         tr('home.cardBody'),
+
                         textAlign: TextAlign.center,
+
                         style: TextStyle(fontSize: 12, height: 1.6, color: ink),
                       ),
+
                       const SizedBox(height: 16),
+
                       StoryButton(
                         savedChapter > 0
                             ? tr('home.newAdventure')
                             : tr('home.startAdventure'),
+
                         onPressed: newGame,
                       ),
+
                       if (savedChapter > 0)
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
+
                           child: StoryButton(
                             story.completed
                                 ? tr('home.realWorldMission')
                                 : tr('home.resume'),
+
                             secondary: true,
+
                             icon: story.completed
                                 ? Icons.workspace_premium
                                 : Icons.play_arrow,
+
                             onPressed: () => story.completed
                                 ? next(Scene.photo)
                                 : story.resumeChapter(savedChapter),
                           ),
                         ),
+
                       TapDownButton(
                         onTap: () => next(Scene.impactMap),
+
                         builder: (pressed) => TextButton.icon(
                           onPressed: pressed,
+
                           icon: const Icon(Icons.map_outlined, size: 18),
+
                           label: Text(
                             tr('home.impactMap'),
+
                             style: TextStyle(fontSize: 12),
                           ),
                         ),
@@ -1031,9 +1530,12 @@ class _StoryScreenState extends State<StoryScreen>
                     ],
                   ),
                 ),
+
                 const SizedBox(height: 10),
+
                 Text(
                   tr('home.motto'),
+
                   style: TextStyle(color: cream, fontSize: 9, letterSpacing: 2),
                 ),
               ],
@@ -1043,23 +1545,31 @@ class _StoryScreenState extends State<StoryScreen>
       ),
     ),
   );
+
   Widget cleanup() => LayoutBuilder(
     builder: (context, c) {
       return Stack(
         children: [
           Positioned(
             top: 6,
+
             left: 20,
+
             right: 20,
+
             child: Row(
               children: [
                 stat(
                   Icons.timer_outlined,
+
                   tr('common.seconds', {'count': story.secondsLeft}),
                 ),
+
                 const Spacer(),
+
                 stat(
                   Icons.recycling_rounded,
+
                   story.scene == Scene.cleanupSecond
                       ? '${story.collected} / 10'
                       : tr('cleanup.collected', {'count': story.collected}),
@@ -1067,96 +1577,134 @@ class _StoryScreenState extends State<StoryScreen>
               ],
             ),
           ),
+
           for (final w in story.waste)
             Positioned(
               left: w.x * (c.maxWidth - 58),
+
               top: w.y * (c.maxHeight - 230) + 45,
+
               child: Semantics(
                 button: true,
+
                 label: tr('cleanup.collectTrash'),
+
                 child: GestureDetector(
                   onTap: () {
                     story.selectWaste(w.id);
+
                     HapticFeedback.selectionClick();
                   },
+
                   child: Transform.rotate(
                     angle: sin(story.worldTime + w.id) * .18,
+
                     child: Container(
                       width: 58,
+
                       height: 58,
+
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
+
                         color: story.selectedWaste?.id == w.id
                             ? gold.withValues(alpha: .8)
                             : Colors.white.withValues(alpha: .15),
+
                         boxShadow: const [
                           BoxShadow(color: Color(0x225dc5cb), blurRadius: 8),
                         ],
                       ),
+
                       child: WasteIcon(w.kind),
                     ),
                   ),
                 ),
               ),
             ),
+
           Positioned(
             left: 18,
+
             right: 18,
+
             bottom: 16,
+
             child: Paper(
               padding: const EdgeInsets.all(16),
+
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+
                 children: [
                   Row(
                     children: [
                       const Icon(Icons.touch_app_rounded, color: ink),
+
                       const SizedBox(width: 10),
+
                       Expanded(
                         child: Text(
                           story.sortingHint,
+
                           style: const TextStyle(
                             fontSize: 12,
+
                             fontWeight: FontWeight.bold,
+
                             color: ink,
                           ),
                         ),
                       ),
                     ],
                   ),
+
                   const SizedBox(height: 10),
+
                   Row(
                     children: [
                       for (var bin = 0; bin < 3; bin++)
                         Expanded(
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 3),
+
                             child: FilledButton(
                               onPressed: story.selectedWaste == null
                                   ? null
                                   : () => story.sortWaste(bin),
+
                               style: FilledButton.styleFrom(
                                 backgroundColor: [
                                   const Color(0xffcb8a38),
+
                                   const Color(0xff537f8c),
+
                                   ink,
                                 ][bin],
+
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 12,
+
                                   horizontal: 3,
                                 ),
+
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                               ),
+
                               child: Text(
                                 [
                                   tr('bins.plastic'),
+
                                   tr('bins.metal'),
+
                                   tr('bins.paper'),
                                 ][bin],
+
                                 style: const TextStyle(
                                   fontSize: 11,
+
                                   color: Colors.white,
                                 ),
                               ),
@@ -1165,24 +1713,33 @@ class _StoryScreenState extends State<StoryScreen>
                         ),
                     ],
                   ),
+
                   const SizedBox(height: 12),
+
                   ClipRRect(
                     borderRadius: BorderRadius.circular(5),
+
                     child: LinearProgressIndicator(
                       value: (story.elapsed / StoryController.roundSeconds)
                           .clamp(0, 1),
+
                       minHeight: 7,
+
                       color: ink,
+
                       backgroundColor: const Color(0xffe2dfcb),
                     ),
                   ),
+
                   const SizedBox(height: 8),
+
                   Text(
                     story.selectedWaste != null
                         ? tr('cleanup.pausedSorting')
                         : story.scene == Scene.cleanupFirst
                         ? tr('cleanup.current')
                         : tr('cleanup.return'),
+
                     style: const TextStyle(color: ink, fontSize: 10),
                   ),
                 ],
@@ -1193,31 +1750,47 @@ class _StoryScreenState extends State<StoryScreen>
       );
     },
   );
+
   Widget rewind() => Center(
     child: SingleChildScrollView(
       padding: const EdgeInsets.all(24),
+
       child: Paper(
         child: Column(
           mainAxisSize: MainAxisSize.min,
+
           children: [
             Transform.rotate(
               angle: -story.worldTime * .55,
+
               child: const Icon(Icons.history_rounded, size: 70, color: ink),
             ),
+
             const SizedBox(height: 20),
+
             eyebrow(tr('rewind.eyebrow')),
+
             const SizedBox(height: 12),
+
             heading(tr('rewind.title')),
+
             const SizedBox(height: 14),
+
             Text(
               tr('rewind.body'),
+
               textAlign: TextAlign.center,
+
               style: TextStyle(color: ink, fontSize: 14, height: 1.7),
             ),
+
             const SizedBox(height: 22),
+
             StoryButton(
               tr('rewind.start'),
+
               onPressed: () => next(Scene.prevention),
+
               icon: Icons.replay_rounded,
             ),
           ],
@@ -1225,104 +1798,218 @@ class _StoryScreenState extends State<StoryScreen>
       ),
     ),
   );
+
   Widget reward() => SingleChildScrollView(
     padding: const EdgeInsets.all(20),
+
     child: Paper(
       child: Column(
         children: [
           const Badge(size: 120),
+
           heading(tr('reward.title')),
+
           const SizedBox(height: 8),
+
           Text(tr('reward.badge'), style: const TextStyle(color: ink)),
+
           const SizedBox(height: 12),
+
           ValueListenableBuilder<TextEditingValue>(
             valueListenable: nameController,
+
             builder: (context, value, _) => Text(
               value.text.trim().isEmpty
                   ? tr('reward.yourName')
                   : value.text.trim(),
+
               textAlign: TextAlign.center,
+
               style: const TextStyle(
                 fontFamily: 'StorySerif',
+
                 fontWeight: FontWeight.bold,
+
                 fontSize: 22,
+
                 color: ink,
               ),
             ),
           ),
+
           const SizedBox(height: 20),
+
           Form(
             key: nameForm,
+
             child: TextFormField(
               controller: nameController,
+
               maxLength: 60,
+
               textCapitalization: TextCapitalization.words,
+
               autofillHints: const [AutofillHints.name],
+
               decoration: InputDecoration(
                 labelText: tr('reward.nameLabel'),
+
                 filled: true,
+
                 fillColor: Colors.white,
+
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
               ),
+
               validator: (value) => value == null || value.trim().isEmpty
                   ? tr('reward.nameValidation')
                   : null,
             ),
           ),
+
           const SizedBox(height: 6),
+
           Text(
             tr('reward.namePrivacy'),
+
             style: TextStyle(color: ink, fontSize: 10, height: 1.5),
+
             textAlign: TextAlign.center,
           ),
+
           const SizedBox(height: 18),
+
           StoryButton(
             'Türkçe PDF',
+
             icon: Icons.download_rounded,
+
             loading: exporting && exportingLanguage == 'tr',
+
             onPressed: exporting ? null : () => export(languageCode: 'tr'),
           ),
+
           const SizedBox(height: 10),
+
           StoryButton(
             'English PDF',
+
             secondary: true,
+
             icon: Icons.download_rounded,
+
             loading: exporting && exportingLanguage == 'en',
+
             onPressed: exporting ? null : () => export(languageCode: 'en'),
           ),
+
           const SizedBox(height: 10),
+
           StoryButton(
             tr('common.home'),
+
             secondary: true,
+
             icon: Icons.home_outlined,
+
             onPressed: () => next(Scene.home),
           ),
         ],
       ),
     ),
   );
+
+  Future<void> _resetPersistedGameProgress() async {
+    final prefs = widget.prefs;
+    if (prefs == null) return;
+
+    const gameKeys = <String>[
+      'cleanup_count',
+      'cleanup_score',
+      'fish_saved',
+      'fish_swallowed',
+      'healing_score',
+      'chapter2_score',
+      'quiz_correct',
+      'quiz_score',
+      'puzzle_score',
+      'bonus_score',
+      'total_score',
+      'cleaned_source_name',
+      'water_source',
+      'ai_photo_verified',
+      'chapter',
+      'completed',
+      'completedAt',
+      'chapter1_difference_found',
+      'chapter2_healing_taps',
+    ];
+
+    for (final key in gameKeys) {
+      await prefs.remove(key);
+    }
+    await LocalDatabaseService.setTotalScore(0);
+  }
+
+  Future<void> syncAllGameScoresToDisk() async {
+    final prefs = widget.prefs;
+    if (prefs == null) return;
+
+    final int wasteCount = story.firstCollected;
+    final int wasteScore = story.chapterOneScore;
+    final int fishSaved = story.avoided;
+    final int fishSwallowed = story.swallowed;
+    final int chapterTwoScore = story.chapterTwoScore;
+    final int puzzleScore = prefs.getInt('puzzle_score') ?? 0;
+    final int quizCorrect = story.preventionCorrect;
+    final int quizScore = story.chapterFourScore;
+    final int bonusScore = prefs.getInt('bonus_score') ?? 0;
+    final int totalScore = story.liveTotalScore + puzzleScore + bonusScore;
+
+    await prefs.setInt('cleanup_count', wasteCount);
+    await prefs.setInt('cleanup_score', wasteScore);
+    await prefs.setInt('fish_saved', fishSaved);
+    await prefs.setInt('fish_swallowed', fishSwallowed);
+    await prefs.setInt('healing_score', chapterTwoScore);
+    await prefs.setInt('chapter2_score', chapterTwoScore);
+    await prefs.setInt('puzzle_score', puzzleScore);
+    await prefs.setInt('quiz_correct', quizCorrect);
+    await prefs.setInt('quiz_score', quizScore);
+    await prefs.setInt('bonus_score', bonusScore);
+    await prefs.setInt('total_score', totalScore);
+
+    await LocalDatabaseService.setTotalScore(totalScore);
+  }
+
   Future<void> export({String? languageCode}) async {
     if (exporting) return;
     if (!(nameForm.currentState?.validate() ?? false)) return;
 
-    final selectedLanguage =
-        languageCode ?? AppLocalizations.instance.languageCode;
-
-    final name = nameController.text.trim();
-    final date = story.completedAt ?? DateTime.now();
-
     setState(() {
       exporting = true;
-      exportingLanguage = selectedLanguage;
+      exportingLanguage =
+          languageCode ?? AppLocalizations.instance.languageCode;
     });
 
     try {
+      await syncAllGameScoresToDisk();
+
+      final selectedLanguage =
+          languageCode ?? AppLocalizations.instance.languageCode;
+      final name = nameController.text.trim();
+      final date = story.completedAt ?? DateTime.now();
+      final prefs = widget.prefs ?? await SharedPreferences.getInstance();
+
       await CertificateService.download(
         name,
         date,
         languageCode: selectedLanguage,
+        totalScore: prefs.getInt('total_score') ?? 0,
+        trashCollected: prefs.getInt('cleanup_count') ?? 0,
+        protectedFish: prefs.getInt('fish_saved') ?? 0,
+        quizScore: prefs.getInt('quiz_score') ?? 0,
       );
     } catch (_) {
       if (mounted) {
@@ -1342,61 +2029,90 @@ class _StoryScreenState extends State<StoryScreen>
 
   Widget storyCard(
     String title,
+
     String text,
+
     String button,
+
     VoidCallback action, {
+
     required String eyebrow,
+
     int? bookPage,
   }) => LayoutBuilder(
     builder: (context, c) => SingleChildScrollView(
       padding: const EdgeInsets.all(20),
+
       child: Column(
         children: [
           SizedBox(
             height: min(190, c.maxHeight * .31),
+
             child: Transform.translate(
               offset: Offset(0, sin(story.worldTime * 1.5) * 3),
+
               child: Image.asset('assets/images/esma.png', fit: BoxFit.contain),
             ),
           ),
+
           Paper(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+
               children: [
                 Text(
                   eyebrow,
+
                   style: const TextStyle(
                     fontSize: 9,
+
                     letterSpacing: 1.4,
+
                     fontWeight: FontWeight.bold,
+
                     color: ink,
                   ),
                 ),
+
                 const SizedBox(height: 10),
+
                 heading(title),
+
                 const SizedBox(height: 12),
+
                 Text(
                   text,
+
                   style: const TextStyle(
                     color: ink,
+
                     fontSize: 13,
+
                     height: 1.65,
                   ),
                 ),
+
                 if (bookPage != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
+
                     child: TapDownButton(
                       onTap: () => book(initial: bookPage),
+
                       sound: TapDownButton.bookSound,
+
                       builder: (pressed) => TextButton.icon(
                         onPressed: pressed,
+
                         icon: const Icon(Icons.menu_book_rounded),
+
                         label: Text(tr('book.open')),
                       ),
                     ),
                   ),
+
                 const SizedBox(height: 14),
+
                 StoryButton(button, onPressed: action),
               ],
             ),
@@ -1405,43 +2121,63 @@ class _StoryScreenState extends State<StoryScreen>
       ),
     ),
   );
+
   Widget stat(IconData icon, String text) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+
     decoration: BoxDecoration(
       color: cream,
+
       borderRadius: BorderRadius.circular(16),
     ),
+
     child: Row(
       children: [
         Icon(icon, color: ink, size: 19),
+
         const SizedBox(width: 7),
+
         Text(
           text,
+
           style: const TextStyle(
             fontWeight: FontWeight.bold,
+
             color: ink,
+
             fontSize: 12,
           ),
         ),
       ],
     ),
   );
+
   Widget heading(String text) => Text(
     text,
+
     style: const TextStyle(
       fontFamily: 'StorySerif',
+
       fontWeight: FontWeight.bold,
+
       fontSize: 25,
+
       color: ink,
+
       height: 1.22,
     ),
   );
+
   Widget eyebrow(String text) => Text(
     text,
+
     style: const TextStyle(
       fontSize: 9,
+
       letterSpacing: 1.3,
+
       fontWeight: FontWeight.bold,
+
       color: ink,
     ),
   );

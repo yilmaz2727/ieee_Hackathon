@@ -83,12 +83,7 @@ class _ChapterOneDifferenceGameState extends State<ChapterOneDifferenceGame> {
           Offset(280, 217),
           Offset(268, 216),
         ],
-        [
-          Offset(358, 99),
-          Offset(379, 99),
-          Offset(382, 216),
-          Offset(360, 216),
-        ],
+        [Offset(358, 99), Offset(379, 99), Offset(382, 216), Offset(360, 216)],
       ],
     ),
 
@@ -230,9 +225,7 @@ class _ChapterOneDifferenceGameState extends State<ChapterOneDifferenceGame> {
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Text(
-                    tr('chapter1.difference.counter', {
-                      'count': _found.length,
-                    }),
+                    tr('chapter1.difference.counter', {'count': _found.length}),
                     style: const TextStyle(
                       color: cream,
                       fontWeight: FontWeight.bold,
@@ -249,7 +242,9 @@ class _ChapterOneDifferenceGameState extends State<ChapterOneDifferenceGame> {
             child: const AspectRatio(
               aspectRatio: _imageAspectRatio,
               child: Image(
-                image: AssetImage('assets/images/chapter1_difference_clean.png'),
+                image: AssetImage(
+                  'assets/images/chapter1_difference_clean.png',
+                ),
                 fit: BoxFit.cover,
               ),
             ),
@@ -308,10 +303,7 @@ class _ChapterOneDifferenceGameState extends State<ChapterOneDifferenceGame> {
 }
 
 class ChapterOneDifferenceResult extends StatefulWidget {
-  const ChapterOneDifferenceResult({
-    super.key,
-    required this.onContinue,
-  });
+  const ChapterOneDifferenceResult({super.key, required this.onContinue});
 
   final VoidCallback onContinue;
 
@@ -522,97 +514,83 @@ class _ImageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        decoration: BoxDecoration(
-          color: cream,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: emphasized ? gold : const Color(0xffe3d6b7),
-            width: emphasized ? 2.2 : 1.3,
+    decoration: BoxDecoration(
+      color: cream,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(
+        color: emphasized ? gold : const Color(0xffe3d6b7),
+        width: emphasized ? 2.2 : 1.3,
+      ),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x24243c32),
+          blurRadius: 12,
+          offset: Offset(0, 4),
+        ),
+      ],
+    ),
+    clipBehavior: Clip.antiAlias,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: ink,
+              fontWeight: FontWeight.bold,
+              fontSize: 10,
+              letterSpacing: emphasized ? .4 : .1,
+            ),
           ),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x24243c32),
-              blurRadius: 12,
-              offset: Offset(0, 4),
-            ),
-          ],
         ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: ink,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 10,
-                  letterSpacing: emphasized ? .4 : .1,
-                ),
-              ),
-            ),
-            child,
-          ],
-        ),
-      );
+        child,
+      ],
+    ),
+  );
 }
 
 class _FoundMarker extends StatelessWidget {
-  const _FoundMarker({
-    super.key,
-    required this.target,
-  });
+  const _FoundMarker({super.key, required this.target});
 
   final _DifferenceTarget target;
 
   @override
   Widget build(BuildContext context) => Align(
-        alignment: Alignment(
-          (target.marker.dx / _ChapterOneDifferenceGameState._imageWidth) * 2 -
-              1,
-          (target.marker.dy / _ChapterOneDifferenceGameState._imageHeight) * 2 -
-              1,
-        ),
-        child: TweenAnimationBuilder<double>(
-          tween: Tween(begin: .15, end: 1),
-          duration: const Duration(milliseconds: 520),
-          curve: Curves.elasticOut,
-          builder: (context, value, child) => Transform.scale(
-            scale: value,
-            child: child,
-          ),
-          child: Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: const Color(0xcc2f7d61),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 3),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x66000000),
-                  blurRadius: 8,
-                  offset: Offset(0, 2),
-                ),
-              ],
+    alignment: Alignment(
+      (target.marker.dx / _ChapterOneDifferenceGameState._imageWidth) * 2 - 1,
+      (target.marker.dy / _ChapterOneDifferenceGameState._imageHeight) * 2 - 1,
+    ),
+    child: TweenAnimationBuilder<double>(
+      tween: Tween(begin: .15, end: 1),
+      duration: const Duration(milliseconds: 520),
+      curve: Curves.elasticOut,
+      builder: (context, value, child) =>
+          Transform.scale(scale: value, child: child),
+      child: Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          color: const Color(0xcc2f7d61),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 3),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x66000000),
+              blurRadius: 8,
+              offset: Offset(0, 2),
             ),
-            child: const Icon(
-              Icons.check_rounded,
-              color: Colors.white,
-              size: 25,
-            ),
-          ),
+          ],
         ),
-      );
+        child: const Icon(Icons.check_rounded, color: Colors.white, size: 25),
+      ),
+    ),
+  );
 }
 
 class _DifferenceTarget {
-  const _DifferenceTarget({
-    required this.marker,
-    required this.polygons,
-  });
+  const _DifferenceTarget({required this.marker, required this.polygons});
 
   final Offset marker;
   final List<List<Offset>> polygons;
@@ -632,7 +610,8 @@ class _DifferenceTarget {
       final pi = polygon[i];
       final pj = polygon[j];
 
-      final crosses = ((pi.dy > point.dy) != (pj.dy > point.dy)) &&
+      final crosses =
+          ((pi.dy > point.dy) != (pj.dy > point.dy)) &&
           (point.dx <
               (pj.dx - pi.dx) *
                       (point.dy - pi.dy) /

@@ -54,175 +54,192 @@ class PreventionChallenge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scenario = scenarios[story.preventionStep];
-    final options = scenario['options'] as List<String>;
-    final correct = scenario['correct'] as int;
+    return ListenableBuilder(
+      listenable: AppLocalizations.instance,
+      builder: (context, _) {
+        final scenario = scenarios[story.preventionStep];
+        final options = scenario['options'] as List<String>;
+        final correct = scenario['correct'] as int;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        children: [
-          const SizedBox(height: 8),
-          Row(
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
             children: [
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: LinearProgressIndicator(
-                    value: (story.preventionStep + 1) / 5,
-                    minHeight: 8,
-                    backgroundColor: cream.withValues(alpha: .65),
-                    color: ink,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                tr('prevention.progress', {'current': story.preventionStep + 1}),
-                style: const TextStyle(
-                  color: ink,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Paper(
-            child: Column(
-              children: [
-                Container(
-                  width: 72,
-                  height: 72,
-                  decoration: const BoxDecoration(
-                    color: Color(0xffffe5a8),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    scenario['icon'] as IconData,
-                    size: 36,
-                    color: ink,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                StoryEyebrow(tr('prevention.eyebrow')),
-                const SizedBox(height: 8),
-                Text(
-                  scenario['title'] as String,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontFamily: 'StorySerif',
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: ink,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  scenario['question'] as String,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: ink, fontSize: 14, height: 1.5),
-                ),
-                const SizedBox(height: 22),
-                for (var i = 0; i < options.length; i++) ...[
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: story.preventionAnswered
-                          ? null
-                          : () => story.answerPrevention(i, correct),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 15,
-                        ),
-                        backgroundColor:
-                            story.preventionAnswered &&
-                                story.preventionSelected == i
-                            ? i == correct
-                                  ? const Color(0xffdcebd4)
-                                  : const Color(0xffffdfd5)
-                            : cream,
-                        foregroundColor: ink,
-                        side: BorderSide(
-                          color:
-                              story.preventionAnswered &&
-                                  story.preventionSelected == i
-                              ? i == correct
-                                    ? const Color(0xff62936b)
-                                    : const Color(0xffc87562)
-                              : const Color(0xffd5bd8c),
-                          width: 2,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              options[i],
-                              textAlign: TextAlign.left,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          if (story.preventionAnswered &&
-                              story.preventionSelected == i)
-                            Icon(
-                              i == correct
-                                  ? Icons.check_circle_rounded
-                                  : Icons.close_rounded,
-                            ),
-                        ],
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: LinearProgressIndicator(
+                        value: (story.preventionStep + 1) / 5,
+                        minHeight: 8,
+                        backgroundColor: cream.withValues(alpha: .65),
+                        color: ink,
                       ),
                     ),
                   ),
-                  if (i != options.length - 1) const SizedBox(height: 10),
+                  const SizedBox(width: 12),
+                  Text(
+                    tr('prevention.progress', {
+                      'current': story.preventionStep + 1,
+                    }),
+                    style: const TextStyle(
+                      color: ink,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
                 ],
-                if (story.preventionAnswered) ...[
-                  const SizedBox(height: 18),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xffeef2df),
-                      borderRadius: BorderRadius.circular(16),
+              ),
+              const SizedBox(height: 18),
+              Paper(
+                child: Column(
+                  children: [
+                    Container(
+                      width: 72,
+                      height: 72,
+                      decoration: const BoxDecoration(
+                        color: Color(0xffffe5a8),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        scenario['icon'] as IconData,
+                        size: 36,
+                        color: ink,
+                      ),
                     ),
-                    child: Text(
-                      story.preventionSelected == correct
-                          ? scenario['success'] as String
-                          : tr('prevention.wrongAnswer', {'answer': options[correct]}),
+                    const SizedBox(height: 16),
+                    StoryEyebrow(tr('prevention.eyebrow')),
+                    const SizedBox(height: 8),
+                    Text(
+                      scenario['title'] as String,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontFamily: 'StorySerif',
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: ink,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      scenario['question'] as String,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: ink,
-                        fontSize: 12,
+                        fontSize: 14,
                         height: 1.5,
-                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 18),
-                  StoryButton(
-                    story.preventionStep == 4
-                        ? tr('prevention.finish')
-                        : tr('prevention.next'),
-                    onPressed: story.nextPreventionScenario,
-                    icon: story.preventionStep == 4
-                        ? Icons.auto_awesome_rounded
-                        : Icons.arrow_forward_rounded,
-                  ),
-                ],
-              ],
-            ),
+                    const SizedBox(height: 22),
+                    for (var i = 0; i < options.length; i++) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: story.preventionAnswered
+                              ? null
+                              : () => story.answerPrevention(i, correct),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 15,
+                            ),
+                            backgroundColor:
+                                story.preventionAnswered &&
+                                    story.preventionSelected == i
+                                ? i == correct
+                                      ? const Color(0xffdcebd4)
+                                      : const Color(0xffffdfd5)
+                                : cream,
+                            foregroundColor: ink,
+                            side: BorderSide(
+                              color:
+                                  story.preventionAnswered &&
+                                      story.preventionSelected == i
+                                  ? i == correct
+                                        ? const Color(0xff62936b)
+                                        : const Color(0xffc87562)
+                                  : const Color(0xffd5bd8c),
+                              width: 2,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  options[i],
+                                  textAlign: TextAlign.left,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              if (story.preventionAnswered &&
+                                  story.preventionSelected == i)
+                                Icon(
+                                  i == correct
+                                      ? Icons.check_circle_rounded
+                                      : Icons.close_rounded,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (i != options.length - 1) const SizedBox(height: 10),
+                    ],
+                    if (story.preventionAnswered) ...[
+                      const SizedBox(height: 18),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xffeef2df),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Text(
+                          story.preventionSelected == correct
+                              ? scenario['success'] as String
+                              : tr('prevention.wrongAnswer', {
+                                  'answer': options[correct],
+                                }),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: ink,
+                            fontSize: 12,
+                            height: 1.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      StoryButton(
+                        story.preventionStep == 4
+                            ? tr('prevention.finish')
+                            : tr('prevention.next'),
+                        onPressed: story.nextPreventionScenario,
+                        icon: story.preventionStep == 4
+                            ? Icons.auto_awesome_rounded
+                            : Icons.arrow_forward_rounded,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              StoryPill(
+                tr('prevention.correctCount', {
+                  'count': story.preventionCorrect,
+                }),
+              ),
+            ],
           ),
-          const SizedBox(height: 14),
-          StoryPill(tr('prevention.correctCount', {'count': story.preventionCorrect})),
-        ],
-      ),
+        );
+      },
     );
   }
 }

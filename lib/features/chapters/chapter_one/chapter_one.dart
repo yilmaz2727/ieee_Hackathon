@@ -290,7 +290,9 @@ class _ChapterOneState extends State<ChapterOne> {
                                               Colors.black,
                                               .12,
                                             ),
-                                            borderRadius: BorderRadius.circular(7),
+                                            borderRadius: BorderRadius.circular(
+                                              7,
+                                            ),
                                             border: Border.all(
                                               color: cream,
                                               width: active ? 2.5 : 1,
@@ -301,8 +303,11 @@ class _ChapterOneState extends State<ChapterOne> {
                                               width: 28,
                                               height: 4,
                                               decoration: BoxDecoration(
-                                                color: cream.withValues(alpha: .9),
-                                                borderRadius: BorderRadius.circular(4),
+                                                color: cream.withValues(
+                                                  alpha: .9,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(4),
                                               ),
                                             ),
                                           ),
@@ -318,12 +323,17 @@ class _ChapterOneState extends State<ChapterOne> {
                                         child: Container(
                                           decoration: BoxDecoration(
                                             color: bodyColor,
-                                            borderRadius: const BorderRadius.only(
-                                              topLeft: Radius.circular(7),
-                                              topRight: Radius.circular(7),
-                                              bottomLeft: Radius.circular(14),
-                                              bottomRight: Radius.circular(14),
-                                            ),
+                                            borderRadius:
+                                                const BorderRadius.only(
+                                                  topLeft: Radius.circular(7),
+                                                  topRight: Radius.circular(7),
+                                                  bottomLeft: Radius.circular(
+                                                    14,
+                                                  ),
+                                                  bottomRight: Radius.circular(
+                                                    14,
+                                                  ),
+                                                ),
                                             border: Border.all(
                                               color: cream,
                                               width: active ? 3 : 1.4,

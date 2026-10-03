@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../../../audio_manager.dart';
 import '../../../game/story_controller.dart';
 import '../../../localization/app_localizations.dart';
-//import '../../../ui/water_scene.dart';
 import '../../../ui/widgets.dart';
 
 class ChapterTwoIntro extends StatefulWidget {
@@ -72,6 +71,9 @@ class ChapterTwoGame extends StatelessWidget {
 
   final StoryController story;
 
+  // Anlık Skor Hesabı: Kaçırılan (kurtarılan) her parça +1, yutulan her parça -5
+  int get currentScore => max(0, (story.avoided * 1) - (story.swallowed * 5));
+
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, c) {
@@ -80,14 +82,24 @@ class ChapterTwoGame extends StatelessWidget {
       return Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: Row(
               children: [
+                // Süre Sayacı
                 StatChip(
                   Icons.timer_outlined,
                   tr('common.seconds', {'count': story.secondsLeft}),
                 ),
                 const Spacer(),
+                // Canlı Puan Göstergesi (+1 / -5 sistemi)
+                StatChip(
+                  Icons.stars_rounded,
+                  AppLocalizations.instance.isTurkish
+                      ? '$currentScore Puan'
+                      : '$currentScore Pts',
+                ),
+                const SizedBox(width: 6),
+                // Yutulan Parça Sayısı
                 StatChip(
                   Icons.warning_amber_rounded,
                   tr('chapter2.swallowedShort', {'count': story.swallowed}),
@@ -173,7 +185,7 @@ class ChapterTwoGame extends StatelessWidget {
             ),
           ),
         ],
-      ); // Column
-    }, // builder
-  ); // LayoutBuilder
+      );
+    },
+  );
 }
