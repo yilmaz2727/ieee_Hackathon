@@ -2,20 +2,18 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:ui' as ui;
 
+import 'package:clock/clock.dart' as time;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../audio_manager.dart';
 import '../../game/story_controller.dart';
 import '../../localization/app_localizations.dart';
 import '../../ui/widgets.dart';
 
 class FishPuzzleScreen extends StatefulWidget {
-  const FishPuzzleScreen({
-    super.key,
-    required this.story,
-    this.onFinish,
-  });
+  const FishPuzzleScreen({super.key, required this.story, this.onFinish});
 
   final StoryController story;
   final VoidCallback? onFinish;
@@ -28,7 +26,8 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
     with WidgetsBindingObserver {
   static const _asset = 'assets/images/kucukcekmece.png';
 
-  final _clock = Stopwatch();
+  // Oyunda gerçek saat; testlerde sahte zamanla (tester.pump) ilerler.
+  final _clock = time.clock.stopwatch();
   final _placed = <int>{};
   final _order = List<int>.generate(9, (i) => i)..shuffle();
 
@@ -53,6 +52,9 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
 
     WidgetsBinding.instance.addObserver(this);
     widget.story.addListener(_syncClock);
+
+    // Çalan müzik durur (playBGM önce durdurur), puzzle müziği başlar.
+    AudioManager.instance.playBGM('puzzle_bg.mp3');
 
     _loadImage();
 
@@ -111,12 +113,24 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
 
     setState(() => _placed.add(index));
 
+    // Son parçada iki ses üst üste binmesin: yalnızca kazanma sesi çalar.
+    if (_placed.length < 9) {
+      AudioManager.instance.playEffect('ch1_dogru_kutu.mp3');
+    }
+
     if (_placed.length == 9) {
       _clock.stop();
       _score = max(20, 100 - _clock.elapsed.inSeconds);
       _finished = true;
+      AudioManager.instance.playEffect('kazandin.mp3');
       _saveResult();
     }
+  }
+
+  // Parça hedefe tutturulamadan bırakıldı (yanlış yer ya da tahta dışı).
+  void _missed() {
+    if (!mounted || _paused || _finished) return;
+    AudioManager.instance.playEffect('ch1_yanlis_kutu.mp3');
   }
 
   Future<void> _saveResult() async {
@@ -163,11 +177,7 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
       width: cell * 1.5,
       height: cell * 1.5,
       child: CustomPaint(
-        painter: _PiecePainter(
-          image: _image!,
-          index: index,
-          cell: cell,
-        ),
+        painter: _PiecePainter(image: _image!, index: index, cell: cell),
       ),
     );
   }
@@ -192,7 +202,9 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      _tr ? 'Göl yeniden bir bütün!' : 'The lake is whole again!',
+                      _tr
+                          ? 'Göl yeniden bir bütün!'
+                          : 'The lake is whole again!',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontFamily: 'StorySerif',
@@ -205,13 +217,13 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
                     Text(
                       _tr
                           ? '“Parçaları birleştirince Küçükçekmece Gölü’nü '
-                              'yeniden gördük. Doğada da su, balıklar ve insanlar '
-                              'birbirine bağlı. Plastik küçülse bile yok olmaz; '
-                              'suya ulaşmadan atıkları doğru kutuya atalım!”'
+                                'yeniden gördük. Doğada da su, balıklar ve insanlar '
+                                'birbirine bağlı. Plastik küçülse bile yok olmaz; '
+                                'suya ulaşmadan atıkları doğru kutuya atalım!”'
                           : '“Putting the pieces together revealed Küçükçekmece '
-                              'Lake. Water, fish and people are connected too. '
-                              'Plastic does not disappear when it breaks into '
-                              'smaller pieces. Let’s sort waste before it reaches water!”',
+                                'Lake. Water, fish and people are connected too. '
+                                'Plastic does not disappear when it breaks into '
+                                'smaller pieces. Let’s sort waste before it reaches water!”',
                       textAlign: TextAlign.center,
                       style: const TextStyle(height: 1.6, color: ink),
                     ),
@@ -219,9 +231,9 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
                     Text(
                       _tr
                           ? '9/9 parça • ${_clock.elapsed.inSeconds} saniye\n'
-                              'Puzzle puanı: $_score'
+                                'Puzzle puanı: $_score'
                           : '9/9 pieces • ${_clock.elapsed.inSeconds} seconds\n'
-                              'Puzzle score: $_score',
+                                'Puzzle score: $_score',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
@@ -237,8 +249,8 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
                       onPressed: _saving
                           ? null
                           : _saved
-                              ? widget.onFinish
-                              : _saveResult,
+                          ? widget.onFinish
+                          : _saveResult,
                       icon: Icons.arrow_forward_rounded,
                     ),
                   ],
@@ -254,10 +266,7 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: Listenable.merge([
-        widget.story,
-        AppLocalizations.instance,
-      ]),
+      animation: Listenable.merge([widget.story, AppLocalizations.instance]),
       builder: (context, _) {
         return LayoutBuilder(
           builder: (context, constraints) {
@@ -364,6 +373,7 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
                                       width: cell,
                                       height: cell,
                                       child: DragTarget<int>(
+                                        key: ValueKey('puzzle-slot-$index'),
                                         onWillAcceptWithDetails: (details) =>
                                             !_paused &&
                                             !_finished &&
@@ -371,24 +381,26 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
                                             details.data == index,
                                         onAcceptWithDetails: (details) =>
                                             _place(details.data),
-                                        builder: (context, candidates, rejected) {
-                                          return Container(
-                                            decoration: BoxDecoration(
-                                              color: candidates.isNotEmpty
-                                                  ? Colors.green.withValues(
-                                                      alpha: .18,
-                                                    )
-                                                  : Colors.transparent,
-                                              border: _placed.contains(index)
-                                                  ? null
-                                                  : Border.all(
-                                                      color: ink.withValues(
-                                                        alpha: .15,
-                                                      ),
-                                                    ),
-                                            ),
-                                          );
-                                        },
+                                        builder:
+                                            (context, candidates, rejected) {
+                                              return Container(
+                                                decoration: BoxDecoration(
+                                                  color: candidates.isNotEmpty
+                                                      ? Colors.green.withValues(
+                                                          alpha: .18,
+                                                        )
+                                                      : Colors.transparent,
+                                                  border:
+                                                      _placed.contains(index)
+                                                      ? null
+                                                      : Border.all(
+                                                          color: ink.withValues(
+                                                            alpha: .15,
+                                                          ),
+                                                        ),
+                                                ),
+                                              );
+                                            },
                                       ),
                                     ),
                                 ],
@@ -411,9 +423,11 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
                                 for (final index in _order)
                                   if (!_placed.contains(index))
                                     Draggable<int>(
+                                      key: ValueKey('puzzle-piece-$index'),
                                       data: index,
                                       maxSimultaneousDrags: _paused ? 0 : 1,
                                       rootOverlay: true,
+                                      onDraggableCanceled: (_, _) => _missed(),
                                       // Tahta ve eldeki parça aynı boyutta;
                                       // tutulduğu nokta sürükleme boyunca korunur.
                                       feedback: Material(
@@ -424,7 +438,14 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
                                         width: cell * 1.5,
                                         height: cell * 1.5,
                                       ),
-                                      child: _piece(index, cell),
+                                      // Tutuş sesi parmak değdiği anda çalar;
+                                      // sürüklemenin başlamasını beklemez.
+                                      child: Listener(
+                                        onPointerDown: (_) => AudioManager
+                                            .instance
+                                            .playEffect('puzzle_tutus.mp3'),
+                                        child: _piece(index, cell),
+                                      ),
                                     ),
                               ],
                             ),
@@ -487,21 +508,9 @@ class _PiecePainter extends CustomPainter {
 
       line(p(.35, 0));
 
-      curve(
-        p(.44, 0),
-        p(.35, .08),
-        p(.36, .13),
-      );
-      curve(
-        p(.37, .25),
-        p(.63, .25),
-        p(.64, .13),
-      );
-      curve(
-        p(.65, .08),
-        p(.56, 0),
-        p(.65, 0),
-      );
+      curve(p(.44, 0), p(.35, .08), p(.36, .13));
+      curve(p(.37, .25), p(.63, .25), p(.64, .13));
+      curve(p(.65, .08), p(.56, 0), p(.65, 0));
 
       line(end);
     }

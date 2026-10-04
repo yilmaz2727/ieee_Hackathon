@@ -10,9 +10,12 @@ import '../../../localization/app_localizations.dart';
 import '../../../ui/widgets.dart';
 
 class ChapterOne extends StatefulWidget {
-  const ChapterOne({super.key, required this.story});
+  const ChapterOne({super.key, required this.story, this.random});
 
   final StoryController story;
+
+  /// Atıkların konum ve türü; testler tekrarlanabilir olsun diye verilebilir.
+  final Random? random;
 
   @override
   State<ChapterOne> createState() => _ChapterOneState();
@@ -21,7 +24,7 @@ class ChapterOne extends StatefulWidget {
 class _ChapterOneState extends State<ChapterOne> with WidgetsBindingObserver {
   // Oyunda gerçek saat; testlerde sahte zamanla (tester.pump) ilerler.
   final clock = time.clock.stopwatch();
-  final random = Random();
+  late final random = widget.random ?? Random();
   final items = <Waste>[];
 
   late final Timer timer;

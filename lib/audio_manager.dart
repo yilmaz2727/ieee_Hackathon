@@ -85,6 +85,8 @@ class AudioManager {
     'oltayi_cek.mp3',
     'cop_tuttu.mp3',
     'balik_tuttu.mp3',
+    'puzzle_bg.mp3',
+    'puzzle_tutus.mp3',
   ];
 
   // Aynı anda çalabilecek efekt sayısı.

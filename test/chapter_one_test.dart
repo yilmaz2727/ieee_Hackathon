@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,7 +19,10 @@ Future<StoryController> _pumpChapterOne(WidgetTester tester) async {
   final story = StoryController()..go(Scene.cleanupFirst);
   await tester.pumpWidget(
     MaterialApp(
-      home: Scaffold(body: ChapterOne(story: story)),
+      // Sabit tohum: atıklar her çalıştırmada aynı yerde, üst üste binmez.
+      home: Scaffold(
+        body: ChapterOne(story: story, random: Random(7)),
+      ),
     ),
   );
   return story;
