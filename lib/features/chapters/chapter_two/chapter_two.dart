@@ -70,19 +70,36 @@ class ChapterTwoGame extends StatelessWidget {
                   Icons.timer_outlined,
                   tr('common.seconds', {'count': story.secondsLeft}),
                 ),
-                const Spacer(),
-                // Canlı Puan Göstergesi (+1 / -5 sistemi)
-                StatChip(
-                  Icons.stars_rounded,
-                  AppLocalizations.instance.isTurkish
-                      ? '$currentScore Puan'
-                      : '$currentScore Pts',
-                ),
                 const SizedBox(width: 6),
-                // Yutulan Parça Sayısı
-                StatChip(
-                  Icons.warning_amber_rounded,
-                  tr('chapter2.swallowedShort', {'count': story.swallowed}),
+                // Dar telefonlarda (ör. 390 px) üç rozet sığmıyordu; sağdaki
+                // grup gerekirse hafifçe küçülür, taşmaz.
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Canlı Puan Göstergesi (+1 / -5 sistemi)
+                          StatChip(
+                            Icons.stars_rounded,
+                            AppLocalizations.instance.isTurkish
+                                ? '$currentScore Puan'
+                                : '$currentScore Pts',
+                          ),
+                          const SizedBox(width: 6),
+                          // Yutulan Parça Sayısı
+                          StatChip(
+                            Icons.warning_amber_rounded,
+                            tr('chapter2.swallowedShort', {
+                              'count': story.swallowed,
+                            }),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),

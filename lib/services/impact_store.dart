@@ -44,17 +44,13 @@ class ImpactStore {
           .map((j) => ImpactEntry.fromJson(Map<String, dynamic>.from(j as Map)))
           .toList();
     } catch (_) {
-      throw const FormatException(
-        'impact.store.readError',
-      );
+      throw const FormatException('impact.store.readError');
     }
   }
 
   Future<void> write(List<ImpactEntry> entries) async {
     if (prefs == null) {
-      throw StateError(
-        'impact.store.unavailable',
-      );
+      throw StateError('impact.store.unavailable');
     }
     final data = jsonEncode(entries.map((e) => e.toJson()).toList());
     if (utf8.encode(data).length > 2800000) {
@@ -73,16 +69,25 @@ Uint8List _resizePhoto(Uint8List bytes) {
   if (bytes.length > 12 * 1024 * 1024) {
     throw const FormatException('impact.maxSize');
   }
-  final decoder = img.findDecoderForData(bytes);
-  if (decoder == null) {
+  final img.Image decoded;
+  try {
+    final decoder = img.findDecoderForData(bytes);
+    if (decoder == null) {
+      throw const FormatException('impact.photo.invalid');
+    }
+    final info = decoder.startDecode(bytes);
+    if (info == null || info.width * info.height > 40000000) {
+      throw const FormatException('impact.photo.tooLargeUnreadable');
+    }
+    final frame = decoder.decodeFrame(0);
+    if (frame == null) throw const FormatException('impact.photo.readError');
+    decoded = frame;
+  } on FormatException {
+    rethrow;
+  } catch (_) {
+    // Bozuk/rastgele baytlarda decoder RangeError vb. fırlatabiliyor.
     throw const FormatException('impact.photo.invalid');
   }
-  final info = decoder.startDecode(bytes);
-  if (info == null || info.width * info.height > 40000000) {
-    throw const FormatException('impact.photo.tooLargeUnreadable');
-  }
-  final decoded = decoder.decodeFrame(0);
-  if (decoded == null) throw const FormatException('impact.photo.readError');
   final oriented = img.bakeOrientation(decoded);
   final resized = img.copyResize(
     oriented,

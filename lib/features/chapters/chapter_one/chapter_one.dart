@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:clock/clock.dart' as time;
 import 'package:flutter/material.dart';
 
 import '../../../audio_manager.dart';
@@ -18,7 +19,8 @@ class ChapterOne extends StatefulWidget {
 }
 
 class _ChapterOneState extends State<ChapterOne> with WidgetsBindingObserver {
-  final clock = Stopwatch();
+  // Oyunda gerçek saat; testlerde sahte zamanla (tester.pump) ilerler.
+  final clock = time.clock.stopwatch();
   final random = Random();
   final items = <Waste>[];
 

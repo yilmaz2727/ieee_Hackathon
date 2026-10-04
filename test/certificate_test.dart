@@ -1,12 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:esma_game/localization/app_localizations.dart';
 import 'package:esma_game/services/certificate.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() async {
+    SharedPreferences.setMockInitialValues({});
     await AppLocalizations.instance.loadInitial(null);
   });
   test(

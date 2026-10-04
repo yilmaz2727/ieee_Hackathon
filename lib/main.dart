@@ -389,23 +389,10 @@ class _StoryScreenState extends State<StoryScreen>
 
   // yok: finalden sonra zaten sessizler, ana menüden açılınca menü müziği sürer.
 
+  // CH2 sahneleri burada yok: hikâye/oyun müziği onStory'de, iyileştirme
+  // müziği ChapterTwoHealingGame'de ayarlanır. CH3 balık tutma, çöp ara
+  // ekranı ve iz bulma da yok: ch3_balik_tutma_bg bunlar boyunca sürer.
   static const _silentScenes = {
-    Scene.underwater,
-
-    Scene.protection,
-
-    Scene.protectionResult,
-
-    Scene.fishHealing,
-
-    Scene.fishHealingResult,
-
-    Scene.fishing,
-
-    Scene.catchWaste,
-
-    Scene.inspection,
-
     Scene.discovery,
 
     Scene.rewind,
@@ -472,12 +459,26 @@ class _StoryScreenState extends State<StoryScreen>
       AudioManager.instance.playBGM('ana_menu_bg.mp3');
     }
 
-    // CH2, CH3 ve final şimdilik bilinçli olarak müziksiz; ses entegrasyonu
+    // CH3 keşif ekranı ve final şimdilik bilinçli olarak müziksiz; ses entegrasyonu
 
     // arayüz ve mekanik güncellemeleri bitince ayrıca yapılacak.
 
     if (_silentScenes.contains(current)) {
       AudioManager.instance.stopBGM();
+    }
+
+    // CH2: hikâye ekranında hikâye müziği; "başla" ile oyun müziği gelir
+    // (playBGM önce çalanı durdurur). Oyun sonu sesi StoryController.tick'te;
+    // ara sonuç ekranındaki menü müziğini o jingle'ın ardından başlatır.
+    // İyileştirme sonucu ise CH3'e geçişten önce yine hikâye müziği çalar.
+    if (current == Scene.underwater || current == Scene.fishHealingResult) {
+      AudioManager.instance.playBGM('chapter_hikaye_bg.mp3');
+    } else if (current == Scene.protection) {
+      AudioManager.instance.playBGM('ch2_oyun_bg.mp3');
+    } else if (current == Scene.fishing) {
+      // CH3: çalan müzik durur, balık tutma müziği başlar. Çöp ekranından
+      // geri dönüşte zaten çaldığı için baştan başlamaz.
+      AudioManager.instance.playBGM('ch3_balik_tutma_bg.mp3');
     }
 
     final chapterOneDifferenceCheckpoint =
@@ -682,7 +683,9 @@ class _StoryScreenState extends State<StoryScreen>
     startingAdventure = true;
 
     try {
-      if (savedChapter > 0) {
+      // Yalnızca hikâye girişinde kalınmışsa silinecek ilerleme yok.
+      if (savedChapter > 0 &&
+          savedChapter != StoryController.storyIntroCheckpoint) {
         final ok = await showDialog<bool>(
           context: context,
 
@@ -720,31 +723,66 @@ class _StoryScreenState extends State<StoryScreen>
 
       if (!mounted) return;
 
-      // Menü müziği durur; StoryIntro hikâye müziğini başlatır.
-
-      AudioManager.instance.stopBGM();
-
-      final start = await Navigator.of(
-        context,
-      ).push<bool>(MaterialPageRoute<bool>(builder: (_) => const StoryIntro()));
+      // Yeni oyun onaylandığı anda başlar: eski kayıt silinir ve "hikâye
+      // girişinde" kaydı yazılır. Hikâye yarıda bırakılırsa "Kaldığım
+      // bölümden devam" eski kayda değil, hikâyeye döner.
+      await saveQueue;
+      await _resetPersistedGameProgress();
+      story.resetProgress();
+      await widget.prefs?.setInt(
+        'chapter',
+        StoryController.storyIntroCheckpoint,
+      );
 
       if (!mounted) return;
 
-      if (start != true) {
-        // Hikâyeden geri tuşuyla çıkıldı: menüye ve müziğine dön.
+      setState(() => savedChapter = StoryController.storyIntroCheckpoint);
 
-        AudioManager.instance.playBGM('ana_menu_bg.mp3');
-
-        return;
-      }
-
-      await _resetPersistedGameProgress();
-      story.startNew();
-      savedChapter = 0;
-      _persistTotalScore();
+      await _playStoryIntro();
     } finally {
       startingAdventure = false;
     }
+  }
+
+  /// "Kaldığım bölümden devam": hikâye girişi yarıda kaldıysa onu yeniden
+  /// açar, değilse kayıtlı bölüme döner.
+  Future<void> resumeSaved() async {
+    if (savedChapter != StoryController.storyIntroCheckpoint) {
+      story.resumeChapter(savedChapter);
+      return;
+    }
+
+    if (startingAdventure) return;
+    startingAdventure = true;
+    try {
+      await _playStoryIntro();
+    } finally {
+      startingAdventure = false;
+    }
+  }
+
+  Future<void> _playStoryIntro() async {
+    // Menü müziği durur; StoryIntro hikâye müziğini başlatır.
+
+    AudioManager.instance.stopBGM();
+
+    final start = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute<bool>(builder: (_) => const StoryIntro()));
+
+    if (!mounted) return;
+
+    if (start != true) {
+      // Hikâyeden geri tuşuyla çıkıldı: menüye ve müziğine dön.
+
+      AudioManager.instance.playBGM('ana_menu_bg.mp3');
+
+      return;
+    }
+
+    story.startNew();
+    savedChapter = 0;
+    _persistTotalScore();
   }
 
   @override
@@ -1664,7 +1702,7 @@ class _StoryScreenState extends State<StoryScreen>
 
                             onPressed: () => story.completed
                                 ? next(Scene.photo)
-                                : story.resumeChapter(savedChapter),
+                                : resumeSaved(),
                           ),
                         ),
                       const SizedBox(height: 8),

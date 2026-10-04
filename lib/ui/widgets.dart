@@ -33,7 +33,9 @@ class TapDownButton extends StatefulWidget {
   /// null ise buton pasif görünür ve dokunuşa tepki vermez.
   final VoidCallback? onTap;
   final Widget Function(VoidCallback? onPressed) builder;
-  final String sound;
+
+  /// null ise tıklama sesi çalmaz (eylem kendi sesini çalıyorsa).
+  final String? sound;
 
   @override
   State<TapDownButton> createState() => _TapDownButtonState();
@@ -59,7 +61,8 @@ class _TapDownButtonState extends State<TapDownButton> {
     final pressed = action == null
         ? null
         : () {
-            AudioManager.instance.playEffect(widget.sound);
+            final sound = widget.sound;
+            if (sound != null) AudioManager.instance.playEffect(sound);
             action();
           };
 
@@ -96,6 +99,7 @@ class StoryButton extends StatelessWidget {
     this.icon = Icons.arrow_forward_rounded,
     this.secondary = false,
     this.loading = false,
+    this.sound = TapDownButton.clickSound,
   });
 
   final String label;
@@ -103,6 +107,7 @@ class StoryButton extends StatelessWidget {
   final IconData icon;
   final bool secondary;
   final bool loading;
+  final String? sound;
 
   @override
   Widget build(BuildContext context) {
@@ -113,6 +118,7 @@ class StoryButton extends StatelessWidget {
       width: double.infinity,
       child: TapDownButton(
         onTap: loading ? null : onPressed,
+        sound: sound,
         builder: (pressed) => FilledButton(
           onPressed: pressed,
           style: FilledButton.styleFrom(

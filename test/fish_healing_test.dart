@@ -5,13 +5,17 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:esma_game/features/chapters/chapter_two/chapter_two_healing.dart';
 import 'package:esma_game/game/story_controller.dart';
 import 'package:esma_game/localization/app_localizations.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUpAll(() => AppLocalizations.instance.loadInitial(null));
+  setUpAll(() {
+    SharedPreferences.setMockInitialValues({});
+    return AppLocalizations.instance.loadInitial(null);
+  });
 
   test(
     'Exactly five patients require three taps; healthy fish never score',
@@ -172,8 +176,9 @@ void main() {
         final image = await boundary.toImage();
         final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
         await Directory('build/qa').create(recursive: true);
-        await File('build/qa/$name.png')
-            .writeAsBytes(bytes!.buffer.asUint8List());
+        await File(
+          'build/qa/$name.png',
+        ).writeAsBytes(bytes!.buffer.asUint8List());
         image.dispose();
       });
     }

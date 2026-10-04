@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../../../audio_manager.dart';
 import '../../../game/story_controller.dart';
 import '../../../localization/app_localizations.dart';
 import '../../../ui/widgets.dart';
@@ -38,11 +39,29 @@ class _ChapterTwoHealingGameState extends State<ChapterTwoHealingGame> {
   void _tap(int index) {
     final story = widget.story;
     if (story.paused || story.scene != Scene.fishHealing) return;
+    final audio = AudioManager.instance;
     if (!story.healFish(index)) {
+      audio.playEffect('ch1_yanlis_kutu.mp3');
       _toast('chapter2.healing.healthy');
     } else if (story.healingTaps[index] == StoryController.healingTapTarget) {
+      // Son balıkta iki uzun ses üst üste binmesin: final_heal yerine
+      // yalnızca bitiş jingle'ı çalar, ardından menü müziği gelir.
+      if (story.healingComplete) {
+        audio.playJingleThenBGM('tum_balik_heal.mp3', 'ana_menu_bg.mp3');
+      } else {
+        audio.playEffect('final_heal.mp3');
+      }
       _toast('chapter2.healing.thanks');
+    } else {
+      audio.playEffect('dogru_balik_heal.mp3');
     }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // playBGM önce çalan müziği durdurur.
+    AudioManager.instance.playBGM('balik_heal_bg.mp3');
   }
 
   @override

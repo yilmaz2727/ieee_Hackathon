@@ -73,6 +73,18 @@ class AudioManager {
     'dedenin_kitabi_click.mp3',
     'fark_bulma_oyunu_bg.mp3',
     'fark_bulma_bildin.mp3',
+    'ch2_oyun_bg.mp3',
+    'mikroplastik_yutma.mp3',
+    'mikroplastik_sonu.mp3',
+    'balik_heal_bg.mp3',
+    'dogru_balik_heal.mp3',
+    'final_heal.mp3',
+    'tum_balik_heal.mp3',
+    'ch3_balik_tutma_bg.mp3',
+    'olta_atma.mp3',
+    'oltayi_cek.mp3',
+    'cop_tuttu.mp3',
+    'balik_tuttu.mp3',
   ];
 
   // Aynı anda çalabilecek efekt sayısı.
@@ -88,6 +100,8 @@ class AudioManager {
     'ch1_nesne_tutma_effect.mp3': 0.45,
     'ch1_dogru_kutu.mp3': 0.5,
     'ch1_yanlis_kutu.mp3': 0.55,
+    // CH3 basılı tutma boyunca ~3 sn çalar; varsayılan 0.8'den kısık.
+    'oltayi_cek.mp3': 0.6,
   };
 
   // Oyuncular init() içinde oluşturulur. init() çağrılmadıysa (ör. testlerde,
@@ -98,6 +112,9 @@ class AudioManager {
   int _nextEffect = 0;
   // Her efekt dosyasını son çalan oyuncu; aynı efekt üst üste binmesin diye.
   final Map<String, AudioPlayer> _lastPlayerFor = {};
+  // Her efekt dosyası için istek sayacı; stopEffect, henüz başlamamış bir
+  // playEffect'in sonradan çalmasını engeller.
+  final Map<String, int> _effectRequest = {};
   String? _currentBGM;
   // Her müzik isteğinde artar; bekleyen bir "sonra çal" isteğinin hâlâ
   // geçerli olup olmadığını anlamak için kullanılır.
@@ -224,16 +241,20 @@ class AudioManager {
     if (_inBackground) return playBGM(sonrakiBGM);
     final request = ++_bgmRequest;
     _currentBGM = null;
+    final file = _normalize(dosyaAdi);
     await _safely(() async {
       await bgPlayer.stop();
       await bgPlayer.setReleaseMode(ReleaseMode.release);
       final finished = bgPlayer.onPlayerComplete.first;
+      // Jingle efekt seviyesinde çalar ama müzik kapalıysa o da susar.
+      // Ardından gelen playBGM müzik seviyesini yeniden uygular.
       await bgPlayer.play(
-        AssetSource('$_folder${_normalize(dosyaAdi)}'),
-        volume: effectiveMusicVolume,
+        AssetSource('$_folder$file'),
+        volume: _musicMuted ? 0.0 : (_effectVolumes[file] ?? _effectVolume),
       );
       // Bitiş olayı gelmezse menü müziği yine de başlasın.
-      await finished.timeout(const Duration(seconds: 6));
+      // En uzun jingle (tum_balik_heal) ~5,9 sn; sınır payı bırakır.
+      await finished.timeout(const Duration(seconds: 10));
     });
     if (request == _bgmRequest) await playBGM(sonrakiBGM);
   }
@@ -253,13 +274,24 @@ class AudioManager {
       _lastPlayerFor[file] = player;
     }
     final target = player;
+    final request = _effectRequest[file] = (_effectRequest[file] ?? 0) + 1;
     await _safely(() async {
       await target.stop();
+      if (_effectRequest[file] != request) return;
       await target.play(
         AssetSource('$_folder$file'),
         volume: _effectVolumes[file] ?? _effectVolume,
       );
     });
+  }
+
+  /// Çalan (veya başlamak üzere olan) bir efekti durdurur.
+  Future<void> stopEffect(String dosyaAdi) async {
+    if (!_initialized) return;
+    final file = _normalize(dosyaAdi);
+    _effectRequest[file] = (_effectRequest[file] ?? 0) + 1;
+    final player = _lastPlayerFor[file];
+    if (player != null) await _safely(player.stop);
   }
 
   String _normalize(String name) => name.endsWith('.mp3') ? name : '$name.mp3';

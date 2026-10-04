@@ -62,7 +62,8 @@ class StoryController extends ChangeNotifier {
   int avoided = 0;
   int catches = 0;
 
-  int get chapterOneScore => max(0, (firstCollected * 10) - (sortingMistakes * 5));
+  int get chapterOneScore =>
+      max(0, (firstCollected * 10) - (sortingMistakes * 5));
 
   int get chapterTwoScore => avoided - (swallowed * 5);
   int get chapterFourScore => preventionCorrect * 20;
@@ -112,7 +113,7 @@ class StoryController extends ChangeNotifier {
   }
 
   int sortingMistakes = 0;
-// Chapter 1'de atık kutuya atıldığında puanı ve ekranı güncelleyen fonksiyon:
+  // Chapter 1'de atık kutuya atıldığında puanı ve ekranı güncelleyen fonksiyon:
   void recordChapterOneWaste(bool isCorrect) {
     if (isCorrect) {
       collected++;
@@ -122,9 +123,12 @@ class StoryController extends ChangeNotifier {
     }
     notifyListeners(); // Sağ üstteki rozetin anında artmasını/azalmasını tetikler
   }
+
   bool paused = false;
   bool cast = false;
   bool bite = false;
+  // CH3: oyuncu "Oltayı çek"i basılı tutarken balık kaçmasın.
+  bool reeling = false;
   bool replaying = false;
 
   // -------------------------------------------------
@@ -328,6 +332,7 @@ class StoryController extends ChangeNotifier {
     if (target == Scene.fishing) {
       cast = false;
       bite = false;
+      reeling = false;
 
       fishingTime = 0;
 
@@ -364,7 +369,17 @@ class StoryController extends ChangeNotifier {
   // YENİ OYUN
   // -------------------------------------------------
 
+  /// Kayıt noktası: yeni oyun onaylandı ama CH1 hikâye girişi henüz
+  /// bitirilmedi. Bu kayıttan devam edilince hikâye girişi yeniden açılır.
+  static const storyIntroCheckpoint = 9;
+
   void startNew() {
+    resetProgress();
+    go(Scene.intro);
+  }
+
+  /// Bellekteki tüm oyun ilerlemesini sıfırlar; sahneyi değiştirmez.
+  void resetProgress() {
     sources.clear();
     found.clear();
     differenceFound.clear();
@@ -398,8 +413,6 @@ class StoryController extends ChangeNotifier {
     preventionSelected = null;
     preventionAnswered = false;
     preventionFeedback = '';
-
-    go(Scene.intro);
   }
 
   // -------------------------------------------------
@@ -407,13 +420,13 @@ class StoryController extends ChangeNotifier {
   // -------------------------------------------------
 
   void resumeChapter(int checkpoint) {
-    // Menü müziği kesin olarak durur. CH1 kayıtlarında (1, 5, 6) hikâye
-    // müziği başlar; playBGM önce çalanı durdurur. CH2, CH3 ve final şimdilik
-    // bilinçli olarak sessiz.
+    // Menü müziği kesin olarak durur. CH1 kayıtlarında (1, 5, 6) ve CH2
+    // hikâye ekranında (2) hikâye müziği başlar; playBGM önce çalanı durdurur.
+    // CH3 ve final şimdilik bilinçli olarak sessiz.
     // 2 = CH2, 3 = CH3, 4 = final; aşağıdaki else dalı da CH1 girişine gider.
-    final resumesChapterOne =
-        checkpoint < 2 || checkpoint == 5 || checkpoint == 6;
-    if (resumesChapterOne) {
+    final playsStoryMusic =
+        checkpoint <= 2 || checkpoint == 5 || checkpoint == 6;
+    if (playsStoryMusic) {
       AudioManager.instance.playBGM('chapter_hikaye_bg.mp3');
     } else {
       AudioManager.instance.stopBGM();
@@ -673,12 +686,20 @@ class StoryController extends ChangeNotifier {
 
     cast = true;
     bite = false;
+    reeling = false;
 
     fishingTime = 0;
 
     fishingHint = tr('story.fishing.wait');
 
+    AudioManager.instance.playEffect('olta_atma.mp3');
+
     notifyListeners();
+  }
+
+  /// Oyuncu "Oltayı çek"i basılı tutarken çağrılır; bu sürede balık kaçmaz.
+  void setReeling(bool value) {
+    reeling = value && bite && scene == Scene.fishing;
   }
 
   // -------------------------------------------------
@@ -692,10 +713,16 @@ class StoryController extends ChangeNotifier {
 
     if (bite) {
       catches++;
+      reeling = false;
 
       if (catches <= 2) {
         waterClarity[2] = catches / 2;
       }
+
+      // İlk iki çekişte çöp, üçüncüde balık gelir.
+      AudioManager.instance.playEffect(
+        catches < 3 ? 'cop_tuttu.mp3' : 'balik_tuttu.mp3',
+      );
 
       go(catches < 3 ? Scene.catchWaste : Scene.inspection);
 
@@ -804,6 +831,7 @@ class StoryController extends ChangeNotifier {
         // Balığa çarptı -> yutuldu
         if (w.y >= .72 && w.y <= .82 && (w.x - fishX).abs() < .095) {
           swallowed++;
+          AudioManager.instance.playEffect('mikroplastik_yutma.mp3');
 
           removed.add(w.id);
         }
@@ -820,6 +848,11 @@ class StoryController extends ChangeNotifier {
       waste.removeWhere((w) => removed.contains(w.id));
 
       if (elapsed >= protectionSeconds) {
+        // Oyun müziği durur, bitiş sesi çalar, ardından menü müziği gelir.
+        AudioManager.instance.playJingleThenBGM(
+          'mikroplastik_sonu.mp3',
+          'ana_menu_bg.mp3',
+        );
         go(Scene.protectionResult);
         SharedPreferences.getInstance().then((prefs) {
           prefs.setInt('healing_score', chapterTwoScore);
@@ -833,7 +866,8 @@ class StoryController extends ChangeNotifier {
     // CHAPTER 3 - OLTA ZAMANLAMASI
     // -------------------------------------------------
 
-    if (scene == Scene.fishing && cast) {
+    // Oyuncu oltayı çekmek için basılı tutarken süre işlemez.
+    if (scene == Scene.fishing && cast && !reeling) {
       fishingTime += dt;
 
       if (fishingTime >= 3 && fishingTime < 6) {

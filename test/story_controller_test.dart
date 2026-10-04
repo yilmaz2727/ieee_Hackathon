@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:esma_game/game/story_controller.dart';
 import 'package:esma_game/localization/app_localizations.dart';
 
@@ -13,6 +14,7 @@ void advance(StoryController c, double seconds) {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() async {
+    SharedPreferences.setMockInitialValues({});
     await AppLocalizations.instance.loadInitial(null);
   });
   test('Three places map to the intended chapters', () {
@@ -31,36 +33,8 @@ void main() {
     expect(c.chapter, 3);
     expect(c.location, tr('chapter.location.3'));
   });
-  test('Wrong sorting cannot award points; sorting and book pause time', () {
-    final c = StoryController(random: Random(2));
-    c.go(Scene.cleanupFirst);
-    final w = c.waste.first;
-    c.selectWaste(w.id);
-    c.sortWaste((w.kind + 1) % 3);
-    expect(c.collected, 0);
-    expect(c.selectedWaste, isNotNull);
-    advance(c, 5);
-    expect(c.elapsed, 0);
-    c.sortWaste(w.kind);
-    expect(c.collected, 1);
-    expect(c.selectedWaste, isNull);
-    c.setPaused(true);
-    advance(c, 5);
-    expect(c.elapsed, 0);
-    c.setPaused(false);
-    advance(c, 1);
-    expect(c.elapsed, closeTo(1, .001));
-  });
-  test('First round runs 20 seconds with reduced incoming waste', () {
-    final c = StoryController(random: Random(3));
-    c.go(Scene.cleanupFirst);
-    advance(c, 19);
-    expect(c.scene, Scene.cleanupFirst);
-    expect(c.incoming, lessThan(30));
-    advance(c, 1.1);
-    expect(c.scene, Scene.firstResult);
-    expect(c.firstIncoming, lessThan(30));
-  });
+  // CH1 ilk turunun ayırma, süre ve duraklatma testleri ekranın kendisine
+  // taşındı: test/chapter_one_test.dart.
   test('Chapter 2 stays locked when fewer than 10 items were collected', () {
     final c = StoryController();
     c.firstCollected = 9;
@@ -91,9 +65,15 @@ void main() {
     final c = StoryController();
     c.go(Scene.fishing);
     for (var catchNo = 1; catchNo <= 3; catchNo++) {
-      c.fishingAction();
+      // Olta atılmadan çekmek hiçbir şey yapmaz.
       c.fishingAction();
       expect(c.scene, Scene.fishing);
+      c.castFishingAt(.5, .5);
+      expect(c.cast, isTrue);
+      // Şamandıra batmadan çekmek de kazandırmaz.
+      c.fishingAction();
+      expect(c.scene, Scene.fishing);
+      expect(c.fishingHint, tr('story.fishing.tooEarly'));
       advance(c, 3.1);
       expect(c.bite, isTrue);
       c.fishingAction();
@@ -106,6 +86,21 @@ void main() {
     c.discover(1);
     c.discover(2);
     expect(c.found.length, 3);
+  });
+  test('Holding the line keeps the fish hooked; releasing lets it escape', () {
+    final c = StoryController()..go(Scene.fishing);
+    c.castFishingAt(.5, .5);
+    advance(c, 3.1);
+    expect(c.bite, isTrue);
+    c.setReeling(true);
+    advance(c, 5);
+    expect(c.bite, isTrue);
+    expect(c.cast, isTrue);
+    c.setReeling(false);
+    advance(c, 3);
+    expect(c.cast, isFalse);
+    expect(c.bite, isFalse);
+    expect(c.fishingHint, tr('story.fishing.missed'));
   });
   test('Replay requires prevention and its target is actually attainable', () {
     final c = StoryController(random: Random(5));
