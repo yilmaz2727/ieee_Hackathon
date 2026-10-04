@@ -11,14 +11,16 @@ class LocalDatabaseService {
 
   // --- ÇİFT KATMANLI DİSK ERİŞİMİ (WEB & MOBİL SENKRONİZASYONU) ---
   static Future<void> _writeToDisk(String key, String value) async {
-    try {
-      if (kIsWeb) {
-        html.window.localStorage[key] = value;
-      }
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(key, value);
-    } catch (e) {
-      debugPrint('Disk yazma hatası ($key): $e');
+    final prefs = await SharedPreferences.getInstance();
+
+    final saved = await prefs.setString(key, value);
+
+    if (!saved) {
+      throw StateError('Veri kaydedilemedi: $key');
+    }
+
+    if (kIsWeb) {
+      html.window.localStorage[key] = value;
     }
   }
 
@@ -124,76 +126,6 @@ class LocalDatabaseService {
     }
 
     return null;
-  }
-
-  static Future<void> signInWithNickname(String nickname) async {
-    final cleanNick = nickname.trim();
-    if (cleanNick.length < 2 || cleanNick.length > 24) {
-      throw ArgumentError('Nickname must contain 2–24 characters.');
-    }
-
-    final prefs = await SharedPreferences.getInstance();
-    final previousId = prefs.getString('current_user_id');
-    final users = await getAllUsers();
-
-    Map<String, dynamic>? user;
-
-    for (final candidate in users) {
-      final existingNick = (candidate['nickname'] as String? ?? '')
-          .trim()
-          .toLowerCase();
-
-      if (existingNick == cleanNick.toLowerCase()) {
-        user = candidate;
-        break;
-      }
-    }
-
-    user ??= await registerUser(nickname: cleanNick, age: 0, country: '');
-
-    final userId = user['id'] as String;
-
-    // Farklı bir nick ile girildiğinde önceki kişinin devam eden oyununu açma.
-    // Kalıcı rozetler ayrı, kullanıcıya özel anahtarlarda saklanır.
-    if (previousId != userId) {
-      const progressKeys = [
-        'cleanup_count',
-        'cleanup_score',
-        'fish_saved',
-        'fish_swallowed',
-        'healing_score',
-        'chapter2_score',
-        'quiz_correct',
-        'quiz_score',
-        'puzzle_score',
-        'bonus_score',
-        'total_score',
-        'cleaned_source_name',
-        'water_source',
-        'ai_photo_verified',
-        'chapter',
-        'completed',
-        'completedAt',
-        'chapter1_difference_found',
-        'chapter2_healing_taps',
-      ];
-
-      for (final key in progressKeys) {
-        await prefs.remove(key);
-      }
-    }
-
-    await _writeToDisk(_activeUserKey, userId);
-
-    final idSaved = await prefs.setString('current_user_id', userId);
-    final nickSaved = await prefs.setString(
-      'current_user_nickname',
-      user['nickname'] as String,
-    );
-
-    if (!idSaved || !nickSaved) {
-      throw StateError('Session could not be saved.');
-    }
   }
 
   // --- 5. OYUN ESNASINDA İSTATİSTİK VE PUANLARI GÜNCELLE ---
@@ -321,5 +253,209 @@ class LocalDatabaseService {
       ),
     );
     return users;
+  }
+
+  // Her hesaba ayrı kaydedilecek oyun bilgileri.
+  // Dil ve ses ayarları cihazda ortak kalır.
+  static const List<String> _accountProgressKeys = [
+    'cleanup_count',
+    'cleanup_score',
+    'fish_saved',
+    'fish_swallowed',
+    'healing_score',
+    'chapter2_score',
+    'quiz_correct',
+    'quiz_score',
+    'puzzle_score',
+    'bonus_score',
+    'total_score',
+    'cleaned_source_name',
+    'water_source',
+    'ai_photo_verified',
+    'chapter',
+    'completed',
+    'completedAt',
+    'chapter1_difference_found',
+    'chapter2_healing_taps',
+  ];
+
+  static String _progressKey(String userId) => 'ACCOUNT_PROGRESS_V1_$userId';
+
+  static Future<void> _saveCurrentAccountProgress(
+    SharedPreferences prefs,
+  ) async {
+    final userId = prefs.getString('current_user_id');
+
+    if (userId == null || userId.isEmpty) return;
+
+    final progress = <String, dynamic>{};
+
+    for (final key in _accountProgressKeys) {
+      final value = prefs.get(key);
+
+      if (value != null) {
+        progress[key] = value;
+      }
+    }
+
+    final saved = await prefs.setString(
+      _progressKey(userId),
+      jsonEncode(progress),
+    );
+
+    if (!saved) {
+      throw StateError('Oyuncu ilerlemesi kaydedilemedi.');
+    }
+  }
+
+  static Future<void> _clearCurrentProgress(SharedPreferences prefs) async {
+    for (final key in _accountProgressKeys) {
+      final removed = await prefs.remove(key);
+
+      if (!removed) {
+        throw StateError('Oyun oturumu temizlenemedi.');
+      }
+    }
+  }
+
+  static Future<void> _restoreAccountProgress(
+    SharedPreferences prefs,
+    String userId,
+  ) async {
+    final raw = prefs.getString(_progressKey(userId));
+
+    // Bu hesabın henüz bir oyun kaydı yok.
+    if (raw == null) return;
+
+    final progress = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+
+    for (final key in _accountProgressKeys) {
+      final value = progress[key];
+
+      if (value == null) continue;
+
+      bool saved;
+
+      if (value is bool) {
+        saved = await prefs.setBool(key, value);
+      } else if (value is int) {
+        saved = await prefs.setInt(key, value);
+      } else if (value is double) {
+        saved = await prefs.setDouble(key, value);
+      } else if (value is String) {
+        saved = await prefs.setString(key, value);
+      } else if (value is List) {
+        saved = await prefs.setStringList(
+          key,
+          value.map((item) => item.toString()).toList(),
+        );
+      } else {
+        throw StateError('Desteklenmeyen oyun kaydı.');
+      }
+
+      if (!saved) {
+        throw StateError('Oyuncu ilerlemesi yüklenemedi.');
+      }
+    }
+  }
+
+  static Future<void> signInWithNickname(
+    String nickname, {
+    required int age,
+    required String gender,
+  }) async {
+    final cleanNick = nickname.trim();
+
+    if (cleanNick.length < 2 || cleanNick.length > 24) {
+      throw ArgumentError('Oyuncu adı 2–24 karakter olmalı.');
+    }
+
+    if (age < 4 || age > 120) {
+      throw ArgumentError('Geçerli bir yaş girilmeli.');
+    }
+
+    const allowedGenders = {'female', 'male', 'other', 'prefer_not_to_say'};
+
+    if (!allowedGenders.contains(gender)) {
+      throw ArgumentError('Geçerli bir cinsiyet seçilmeli.');
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final previousId = prefs.getString('current_user_id');
+    final users = await getAllUsers();
+
+    final index = users.indexWhere(
+      (user) =>
+          (user['nickname'] as String? ?? '').trim().toLowerCase() ==
+          cleanNick.toLowerCase(),
+    );
+
+    late final Map<String, dynamic> user;
+
+    if (index >= 0) {
+      // Aynı nick mevcutsa aynı hesabı kullan.
+      // Puan, rozet ve kullanıcı kimliği değişmez.
+      user = Map<String, dynamic>.from(users[index]);
+
+      user['age'] = age;
+      user['gender'] = gender;
+      user['updated_at'] = DateTime.now().toIso8601String();
+
+      users[index] = user;
+    } else {
+      user = <String, dynamic>{
+        'id': 'user_${DateTime.now().microsecondsSinceEpoch}',
+        'nickname': cleanNick,
+        'age': age,
+        'gender': gender,
+        'country': '',
+        'total_score': 0,
+        'trash_collected': 0,
+        'protected_fish': 0,
+        'puzzle_score': 0,
+        'quiz_score': 0,
+        'cleaned_source_name': '',
+        'created_at': DateTime.now().toIso8601String(),
+      };
+
+      users.add(user);
+    }
+
+    final userId = user['id'] as String;
+
+    if (previousId != userId) {
+      await _saveCurrentAccountProgress(prefs);
+      await _clearCurrentProgress(prefs);
+      await _restoreAccountProgress(prefs, userId);
+    }
+
+    await _writeToDisk(_usersTableKey, jsonEncode(users));
+
+    await prefs.setString('current_user_nickname', user['nickname'] as String);
+    await prefs.setInt('current_user_age', age);
+    await prefs.setString('current_user_gender', gender);
+
+    await _writeToDisk(_activeUserKey, userId);
+    await prefs.setString('current_user_id', userId);
+  }
+
+  static Future<void> signOut() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // Çıkıştan önce mevcut oyuncunun kaldığı yeri sakla.
+    await _saveCurrentAccountProgress(prefs);
+
+    await _writeToDisk(_activeUserKey, '');
+
+    await prefs.remove('current_user_id');
+    await prefs.remove('current_user_nickname');
+    await prefs.remove('current_user_age');
+    await prefs.remove('current_user_gender');
+    await prefs.remove('current_user_country');
+
+    await _clearCurrentProgress(prefs);
+
+    // Kullanıcı tablosu, hesaplara ait ilerlemeler ve
+    // guardian_best_reward_v1_* rozet kayıtları silinmez.
   }
 }

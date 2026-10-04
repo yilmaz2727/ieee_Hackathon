@@ -62,7 +62,8 @@ class StoryController extends ChangeNotifier {
   int avoided = 0;
   int catches = 0;
 
-  int get chapterOneScore => firstCollected * 10;
+  int get chapterOneScore => max(0, (firstCollected * 10) - (sortingMistakes * 5));
+
   int get chapterTwoScore => avoided - (swallowed * 5);
   int get chapterFourScore => preventionCorrect * 20;
   int get liveTotalScore =>
@@ -111,7 +112,16 @@ class StoryController extends ChangeNotifier {
   }
 
   int sortingMistakes = 0;
-
+// Chapter 1'de atık kutuya atıldığında puanı ve ekranı güncelleyen fonksiyon:
+  void recordChapterOneWaste(bool isCorrect) {
+    if (isCorrect) {
+      collected++;
+      waterClarity[0] = (collected / secondTarget).clamp(0.0, 1.0);
+    } else {
+      sortingMistakes++;
+    }
+    notifyListeners(); // Sağ üstteki rozetin anında artmasını/azalmasını tetikler
+  }
   bool paused = false;
   bool cast = false;
   bool bite = false;
