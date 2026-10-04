@@ -25,6 +25,7 @@ class _ChapterOneState extends State<ChapterOne> with WidgetsBindingObserver {
   late final Timer timer;
   int nextId = 0;
   int collected = 0;
+  int score = 0;
   double previousTime = 0;
   double spawnTime = 0;
   bool finished = false;
@@ -94,7 +95,8 @@ class _ChapterOneState extends State<ChapterOne> with WidgetsBindingObserver {
         .08 + random.nextDouble() * .84,
         initial ? .12 + random.nextDouble() * .34 : .02,
         random.nextInt(3),
-        .078 + random.nextDouble() * .030,
+        // Nesne akış hızı artırıldı (Eski: .078 - .108 -> Yeni: .17 - .23)
+        .17 + random.nextDouble() * .06,
       ),
     );
   }
@@ -113,14 +115,14 @@ class _ChapterOneState extends State<ChapterOne> with WidgetsBindingObserver {
     setState(() {
       spawnTime += dt;
 
-      if (spawnTime >= 1.05) {
-        spawnTime -= 1.05;
+      // Nesnelerin geliş sıklığı artırıldı (~0.6 saniyede bir yeni nesne)
+      // 5 başlangıç + 20 saniyede ~25 nesne = Toplam ~30 nesne
+      if (spawnTime >= 0.60) {
+        spawnTime -= 0.60;
         spawn();
       }
 
       for (final item in items) {
-        // Her parça akıntıyla farklı bir kıyı noktasına yaklaşır. Sabit sıra
-        // yerine küçük salınımlar kullanmak hareketi daha doğal gösterir.
         final shoreY = .76 + ((sin(item.id * 1.73) + 1) / 2) * .12;
         final shoreX = .08 + ((sin(item.id * 2.41 + .7) + 1) / 2) * .80;
 
@@ -128,14 +130,14 @@ class _ChapterOneState extends State<ChapterOne> with WidgetsBindingObserver {
           item.y = min(shoreY, item.y + item.speed * dt);
 
           final approach = ((item.y - .28) / .48).clamp(0.0, 1.0);
-          final current = sin(seconds * 1.05 + item.id * 1.4) * .016;
-          final ripple = cos(seconds * .72 + item.id * .8) * .006;
+          final current = sin(seconds * 1.8 + item.id * 1.4) * .022;
+          final ripple = cos(seconds * 1.2 + item.id * .8) * .01;
 
-          item.x += (shoreX - item.x) * dt * (.35 + approach * 1.15);
+          item.x += (shoreX - item.x) * dt * (.55 + approach * 1.35);
           item.x += (current + ripple) * dt * (1 - approach * .65);
           item.x = item.x.clamp(.02, .98);
         } else {
-          item.x += (shoreX - item.x) * min(1.0, dt * 2.2);
+          item.x += (shoreX - item.x) * min(1.0, dt * 3.0);
         }
       }
     });
@@ -144,7 +146,6 @@ class _ChapterOneState extends State<ChapterOne> with WidgetsBindingObserver {
   void drop(int id, int bin) {
     if (!mounted || finished || _isPaused) return;
 
-    // Süre dolduktan sonraki bırakmalar puan kazandırmaz.
     if (seconds >= 20) {
       finish();
       return;
@@ -154,24 +155,31 @@ class _ChapterOneState extends State<ChapterOne> with WidgetsBindingObserver {
     if (matches.isEmpty) return;
 
     final item = matches.first;
+    final isCorrect = item.kind == bin;
 
-    // Efektler ayrı oyuncularda çalar; oyun müziği kesilmez.
     AudioManager.instance.playEffect(
-      item.kind == bin ? 'ch1_dogru_kutu.mp3' : 'ch1_yanlis_kutu.mp3',
+      isCorrect ? 'ch1_dogru_kutu.mp3' : 'ch1_yanlis_kutu.mp3',
     );
 
     setState(() {
-      if (item.kind != bin) {
+      if (!isCorrect) {
+        // Yanlış kutu: 5 puan düşür (0'ın altına inmesin)
+        score = max(0, score - 5);
+        widget.story.sortingMistakes++; // Hatayı kaydet
         message = tr('chapter1.message.wrongBin');
-        return;
-      }
+      } else {
+        // Doğru kutu: 10 puan ekle
+        items.remove(item);
+        collected++;
+        score += 10;
 
-      items.remove(item);
-      collected++;
-      message = collected >= 10
-          ? tr('chapter1.message.targetDone')
-          : tr('chapter1.message.target');
-      widget.story.waterClarity[0] = (collected / 10).clamp(0.0, 1.0);
+        message = collected >= 10
+            ? tr('chapter1.message.targetDone')
+            : tr('chapter1.message.target');
+
+        widget.story.waterClarity[0] = (collected / 10).clamp(0.0, 1.0);
+        // 10 olunca bitirme kaldırıldı, 20 saniye dolana kadar devam eder!
+      }
     });
   }
 
@@ -182,16 +190,18 @@ class _ChapterOneState extends State<ChapterOne> with WidgetsBindingObserver {
     timer.cancel();
     clock.stop();
 
-    // Oyun müziği durur, sonuç sesi çalar, ardından menü müziği gelir.
     AudioManager.instance.playJingleThenBGM(
       collected >= 10 ? 'kazandin.mp3' : 'kaybettin.mp3',
       'ana_menu_bg.mp3',
     );
 
+    // Oyun bitti: Skor ve veriler artık StoryController'a işlenir
     widget.story.firstCollected = collected;
     widget.story.firstIncoming = nextId;
     widget.story.collected = collected;
-    widget.story.go(Scene.firstResult);
+    widget.story.go(
+      Scene.firstResult,
+    ); // Üst bardaki sarı rozet burada güncellenir
   }
 
   @override
@@ -232,7 +242,7 @@ class _ChapterOneState extends State<ChapterOne> with WidgetsBindingObserver {
                       ),
                     ),
                     Text(
-                      tr('chapter1.score', {'score': collected * 10}),
+                      tr('chapter1.score', {'score': score}),
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         color: ink,

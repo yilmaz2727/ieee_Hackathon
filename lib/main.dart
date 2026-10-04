@@ -159,6 +159,141 @@ class _StoryScreenState extends State<StoryScreen>
   bool startingAdventure = false;
 
   bool get atHome => story.scene == Scene.home;
+  bool _changingAccount = false;
+
+  Future<void> _openAccountMenu() async {
+    if (_changingAccount) return;
+
+    final prefs = widget.prefs ?? await SharedPreferences.getInstance();
+    if (!mounted) return;
+
+    final isTr = AppLocalizations.instance.isTurkish;
+
+    final nickname = prefs.getString('current_user_nickname') ?? '';
+    final age = prefs.getInt('current_user_age');
+    final gender = prefs.getString('current_user_gender');
+
+    final genderLabel = switch (gender) {
+      'female' => isTr ? 'Kız / Kadın' : 'Female',
+      'male' => isTr ? 'Erkek' : 'Male',
+      'other' => isTr ? 'Diğer' : 'Other',
+      'prefer_not_to_say' => isTr ? 'Belirtilmedi' : 'Not specified',
+      _ => isTr ? 'Henüz eklenmedi' : 'Not added yet',
+    };
+
+    final action = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: cream,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text(
+          isTr ? 'Hesabım' : 'My account',
+          style: const TextStyle(
+            fontFamily: 'StorySerif',
+            fontWeight: FontWeight.bold,
+            color: ink,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Icon(Icons.account_circle_outlined, size: 64, color: ink),
+            const SizedBox(height: 12),
+            Text(
+              nickname,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: ink,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '${isTr ? 'Yaş' : 'Age'}: '
+              '${age != null && age >= 4 ? age : '—'}',
+            ),
+            const SizedBox(height: 6),
+            Text('${isTr ? 'Cinsiyet' : 'Gender'}: $genderLabel'),
+            const SizedBox(height: 18),
+            Text(
+              isTr
+                  ? 'Çıkış yaptığında oyun kaydın ve kazandığın rozet '
+                        'bu cihazda korunur.'
+                  : 'Your game progress and earned badge stay saved '
+                        'on this device when you sign out.',
+              style: const TextStyle(fontSize: 12, height: 1.5),
+            ),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop('switch'),
+              icon: const Icon(Icons.switch_account_outlined),
+              label: Text(
+                isTr ? 'Başka / yeni hesaba geç' : 'Switch / create account',
+              ),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop('logout'),
+              icon: const Icon(Icons.logout_rounded),
+              label: Text(isTr ? 'Çıkış yap' : 'Sign out'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(isTr ? 'Kapat' : 'Close'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || action == null) return;
+
+    await _leaveAccount();
+  }
+
+  Future<void> _leaveAccount() async {
+    if (_changingAccount) return;
+
+    _changingAccount = true;
+    final wasPaused = story.paused;
+    story.setPaused(true);
+
+    try {
+      // Eski hesabın bekleyen kayıtları bitmeden hesap değiştirme.
+      await saveQueue;
+
+      await LocalDatabaseService.signOut();
+
+      final prefs = widget.prefs ?? await SharedPreferences.getInstance();
+      await prefs.reload();
+
+      if (!mounted) return;
+
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(builder: (_) => LoginScreen(prefs: prefs)),
+        (_) => false,
+      );
+    } catch (_) {
+      if (!mounted) return;
+
+      _changingAccount = false;
+      story.setPaused(wasPaused);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLocalizations.instance.isTurkish
+                ? 'Çıkış tamamlanamadı. Lütfen tekrar dene.'
+                : 'Could not sign out. Please try again.',
+          ),
+        ),
+      );
+    }
+  }
 
   void _persistTotalScore() {
     final prefs = widget.prefs;
@@ -1231,7 +1366,7 @@ class _StoryScreenState extends State<StoryScreen>
 
             color: ink,
 
-            backgroundColor: const Color(0xffded8bc), 
+            backgroundColor: const Color(0xffded8bc),
           ),
         ],
       ),
@@ -1240,44 +1375,36 @@ class _StoryScreenState extends State<StoryScreen>
 
   Widget body() => switch (story.scene) {
     Scene.home => home(),
-Scene.reward => reward(),
+    Scene.reward => reward(),
     Scene.intro => ChapterOneIntro(onStart: () => next(Scene.cleanupFirst)),
 
     Scene.cleanupFirst => ChapterOne(story: story),
 
     Scene.cleanupSecond => cleanup(),
 
+    // YENİ KOD:
     Scene.firstResult =>
       story.firstCollected >= 10
           ? storyCard(
               tr('chapter1.result.successTitle', {
                 'count': story.firstCollected,
               }),
-
               tr('chapter1.result.successBody', {
-                'score': story.firstCollected * 10,
+                'score': story
+                    .chapterOneScore, // <-- Ceza puanı düşülmüş gerçek skor
               }),
-
               tr('chapter1.result.continue'),
-
               () => next(Scene.differencePuzzle),
-
               eyebrow: tr('chapter1.result.successEyebrow'),
-
               bookPage: 0,
             )
           : storyCard(
               tr('chapter1.result.failTitle', {'count': story.firstCollected}),
-
               tr('chapter1.result.failBody'),
-
               tr('common.retry'),
-
               () => next(Scene.cleanupFirst),
-
               eyebrow: tr('chapter1.result.failEyebrow'),
             ),
-
     Scene.differencePuzzle => ChapterOneDifferenceGame(
       story: story,
 
@@ -1548,6 +1675,15 @@ Scene.reward => reward(),
                         secondary: true,
                         icon: Icons.workspace_premium_outlined,
                         onPressed: () => next(Scene.reward),
+                      ),
+                      const SizedBox(height: 8),
+                      StoryButton(
+                        AppLocalizations.instance.isTurkish
+                            ? 'Hesabım'
+                            : 'My account',
+                        secondary: true,
+                        icon: Icons.manage_accounts_outlined,
+                        onPressed: _openAccountMenu,
                       ),
 
                       TapDownButton(
