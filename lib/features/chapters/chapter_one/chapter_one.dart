@@ -1,29 +1,36 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:clock/clock.dart' as time;
 import 'package:flutter/material.dart';
 
+import '../../../audio_manager.dart';
 import '../../../game/story_controller.dart';
 import '../../../localization/app_localizations.dart';
 import '../../../ui/widgets.dart';
 
 class ChapterOne extends StatefulWidget {
-  const ChapterOne({super.key, required this.story});
+  const ChapterOne({super.key, required this.story, this.random});
 
   final StoryController story;
+
+  /// Atıkların konum ve türü; testler tekrarlanabilir olsun diye verilebilir.
+  final Random? random;
 
   @override
   State<ChapterOne> createState() => _ChapterOneState();
 }
 
-class _ChapterOneState extends State<ChapterOne> {
-  final clock = Stopwatch();
-  final random = Random();
+class _ChapterOneState extends State<ChapterOne> with WidgetsBindingObserver {
+  // Oyunda gerçek saat; testlerde sahte zamanla (tester.pump) ilerler.
+  final clock = time.clock.stopwatch();
+  late final random = widget.random ?? Random();
   final items = <Waste>[];
 
   late final Timer timer;
   int nextId = 0;
   int collected = 0;
+  int score = 0;
   double previousTime = 0;
   double spawnTime = 0;
   bool finished = false;
@@ -31,10 +38,44 @@ class _ChapterOneState extends State<ChapterOne> {
 
   double get seconds => clock.elapsedMilliseconds / 1000;
   int get remaining => max(0, (20 - seconds).ceil());
+  bool _backgroundPaused = false;
+
+  bool get _isPaused => widget.story.paused || _backgroundPaused;
+
+  void _syncPause() {
+    if (finished || _isPaused) {
+      clock.stop();
+    } else {
+      clock.start();
+    }
+
+    previousTime = seconds;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _backgroundPaused = state != AppLifecycleState.resumed;
+    _syncPause();
+  }
+
+  @override
+  void didUpdateWidget(covariant ChapterOne oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.story != widget.story) {
+      oldWidget.story.removeListener(_syncPause);
+      widget.story.addListener(_syncPause);
+      _syncPause();
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+
+    // "Temizliğe başlayalım" / "Tekrar oyna" ile oyun açılır: hikâye müziği
+    // yerini oyun müziğine bırakır.
+    AudioManager.instance.playBGM('ch1_oyun_bg.mp3');
 
     widget.story.waterClarity[0] = 0;
     widget.story.visibleClarity[0] = 0;
@@ -44,7 +85,10 @@ class _ChapterOneState extends State<ChapterOne> {
       spawn(initial: true);
     }
 
-    clock.start();
+    WidgetsBinding.instance.addObserver(this);
+    widget.story.addListener(_syncPause);
+
+    _syncPause();
 
     timer = Timer.periodic(const Duration(milliseconds: 33), (_) => update());
   }
@@ -56,13 +100,14 @@ class _ChapterOneState extends State<ChapterOne> {
         .08 + random.nextDouble() * .84,
         initial ? .12 + random.nextDouble() * .34 : .02,
         random.nextInt(3),
-        .078 + random.nextDouble() * .030,
+        // Nesne akış hızı artırıldı (Eski: .078 - .108 -> Yeni: .17 - .23)
+        .17 + random.nextDouble() * .06,
       ),
     );
   }
 
   void update() {
-    if (!mounted || finished) return;
+    if (!mounted || finished || _isPaused) return;
 
     if (seconds >= 20) {
       finish();
@@ -75,14 +120,14 @@ class _ChapterOneState extends State<ChapterOne> {
     setState(() {
       spawnTime += dt;
 
-      if (spawnTime >= 1.05) {
-        spawnTime -= 1.05;
+      // Nesnelerin geliş sıklığı artırıldı (~0.6 saniyede bir yeni nesne)
+      // 5 başlangıç + 20 saniyede ~25 nesne = Toplam ~30 nesne
+      if (spawnTime >= 0.60) {
+        spawnTime -= 0.60;
         spawn();
       }
 
       for (final item in items) {
-        // Her parça akıntıyla farklı bir kıyı noktasına yaklaşır. Sabit sıra
-        // yerine küçük salınımlar kullanmak hareketi daha doğal gösterir.
         final shoreY = .76 + ((sin(item.id * 1.73) + 1) / 2) * .12;
         final shoreX = .08 + ((sin(item.id * 2.41 + .7) + 1) / 2) * .80;
 
@@ -90,23 +135,22 @@ class _ChapterOneState extends State<ChapterOne> {
           item.y = min(shoreY, item.y + item.speed * dt);
 
           final approach = ((item.y - .28) / .48).clamp(0.0, 1.0);
-          final current = sin(seconds * 1.05 + item.id * 1.4) * .016;
-          final ripple = cos(seconds * .72 + item.id * .8) * .006;
+          final current = sin(seconds * 1.8 + item.id * 1.4) * .022;
+          final ripple = cos(seconds * 1.2 + item.id * .8) * .01;
 
-          item.x += (shoreX - item.x) * dt * (.35 + approach * 1.15);
+          item.x += (shoreX - item.x) * dt * (.55 + approach * 1.35);
           item.x += (current + ripple) * dt * (1 - approach * .65);
           item.x = item.x.clamp(.02, .98);
         } else {
-          item.x += (shoreX - item.x) * min(1.0, dt * 2.2);
+          item.x += (shoreX - item.x) * min(1.0, dt * 3.0);
         }
       }
     });
   }
 
   void drop(int id, int bin) {
-    if (!mounted || finished) return;
+    if (!mounted || finished || _isPaused) return;
 
-    // Süre dolduktan sonraki bırakmalar puan kazandırmaz.
     if (seconds >= 20) {
       finish();
       return;
@@ -116,19 +160,31 @@ class _ChapterOneState extends State<ChapterOne> {
     if (matches.isEmpty) return;
 
     final item = matches.first;
+    final isCorrect = item.kind == bin;
+
+    AudioManager.instance.playEffect(
+      isCorrect ? 'ch1_dogru_kutu.mp3' : 'ch1_yanlis_kutu.mp3',
+    );
 
     setState(() {
-      if (item.kind != bin) {
+      if (!isCorrect) {
+        // Yanlış kutu: 5 puan düşür (0'ın altına inmesin)
+        score = max(0, score - 5);
+        widget.story.sortingMistakes++; // Hatayı kaydet
         message = tr('chapter1.message.wrongBin');
-        return;
-      }
+      } else {
+        // Doğru kutu: 10 puan ekle
+        items.remove(item);
+        collected++;
+        score += 10;
 
-      items.remove(item);
-      collected++;
-      message = collected >= 10
-          ? tr('chapter1.message.targetDone')
-          : tr('chapter1.message.target');
-      widget.story.waterClarity[0] = (collected / 10).clamp(0.0, 1.0);
+        message = collected >= 10
+            ? tr('chapter1.message.targetDone')
+            : tr('chapter1.message.target');
+
+        widget.story.waterClarity[0] = (collected / 10).clamp(0.0, 1.0);
+        // 10 olunca bitirme kaldırıldı, 20 saniye dolana kadar devam eder!
+      }
     });
   }
 
@@ -139,14 +195,25 @@ class _ChapterOneState extends State<ChapterOne> {
     timer.cancel();
     clock.stop();
 
+    AudioManager.instance.playJingleThenBGM(
+      collected >= 10 ? 'kazandin.mp3' : 'kaybettin.mp3',
+      'ana_menu_bg.mp3',
+    );
+
+    // Oyun bitti: Skor ve veriler artık StoryController'a işlenir
     widget.story.firstCollected = collected;
     widget.story.firstIncoming = nextId;
     widget.story.collected = collected;
-    widget.story.go(Scene.firstResult);
+    widget.story.go(
+      Scene.firstResult,
+    ); // Üst bardaki sarı rozet burada güncellenir
   }
 
   @override
+  @override
   void dispose() {
+    widget.story.removeListener(_syncPause);
+    WidgetsBinding.instance.removeObserver(this);
     timer.cancel();
     clock.stop();
     super.dispose();
@@ -180,7 +247,7 @@ class _ChapterOneState extends State<ChapterOne> {
                       ),
                     ),
                     Text(
-                      tr('chapter1.score', {'score': collected * 10}),
+                      tr('chapter1.score', {'score': score}),
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         color: ink,
@@ -198,7 +265,10 @@ class _ChapterOneState extends State<ChapterOne> {
                 top: 62 + item.y * areaHeight,
                 child: Draggable<int>(
                   data: item.id,
-                  maxSimultaneousDrags: 1,
+                  maxSimultaneousDrags: _isPaused ? 0 : 1,
+                  onDragStarted: () => AudioManager.instance.playEffect(
+                    'ch1_nesne_tutma_effect.mp3',
+                  ),
                   feedback: Material(
                     color: Colors.transparent,
                     child: wastePicture(item.kind),
@@ -238,41 +308,121 @@ class _ChapterOneState extends State<ChapterOne> {
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 3),
                             child: DragTarget<int>(
-                              onWillAcceptWithDetails: (_) => !finished,
+                              onWillAcceptWithDetails: (_) =>
+                                  !finished && !_isPaused,
                               onAcceptWithDetails: (details) {
                                 drop(details.data, bin);
                               },
                               builder: (context, candidates, rejected) {
+                                final baseColor = [
+                                  const Color(0xffc88635),
+                                  const Color(0xff537f8c),
+                                  ink,
+                                ][bin];
+                                final active = candidates.isNotEmpty;
+                                final bodyColor = active ? gold : baseColor;
+
                                 return AnimatedContainer(
                                   duration: const Duration(milliseconds: 120),
-                                  height: 78,
-                                  decoration: BoxDecoration(
-                                    color: candidates.isNotEmpty
-                                        ? gold
-                                        : [
-                                            const Color(0xffc88635),
-                                            const Color(0xff537f8c),
-                                            ink,
-                                          ][bin],
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(
-                                      color: cream,
-                                      width: candidates.isNotEmpty ? 3 : 1,
-                                    ),
-                                  ),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
+                                  height: 92,
+                                  padding: const EdgeInsets.only(top: 7),
+                                  child: Stack(
+                                    clipBehavior: Clip.none,
                                     children: [
-                                      const Icon(
-                                        Icons.delete_outline,
-                                        color: Colors.white,
-                                        size: 30,
+                                      // Geri dönüşüm kutusunun kapak kısmı.
+                                      Positioned(
+                                        top: 0,
+                                        left: 7,
+                                        right: 7,
+                                        child: Container(
+                                          height: 16,
+                                          decoration: BoxDecoration(
+                                            color: Color.lerp(
+                                              bodyColor,
+                                              Colors.black,
+                                              .12,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              7,
+                                            ),
+                                            border: Border.all(
+                                              color: cream,
+                                              width: active ? 2.5 : 1,
+                                            ),
+                                          ),
+                                          child: Center(
+                                            child: Container(
+                                              width: 28,
+                                              height: 4,
+                                              decoration: BoxDecoration(
+                                                color: cream.withValues(
+                                                  alpha: .9,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(4),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                       ),
-                                      Text(
-                                        [tr('bins.plastic'), tr('bins.metal'), tr('bins.paper')][bin],
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
+
+                                      // Kutunun gövdesi.
+                                      Positioned(
+                                        top: 13,
+                                        left: 11,
+                                        right: 11,
+                                        bottom: 0,
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            color: bodyColor,
+                                            borderRadius:
+                                                const BorderRadius.only(
+                                                  topLeft: Radius.circular(7),
+                                                  topRight: Radius.circular(7),
+                                                  bottomLeft: Radius.circular(
+                                                    14,
+                                                  ),
+                                                  bottomRight: Radius.circular(
+                                                    14,
+                                                  ),
+                                                ),
+                                            border: Border.all(
+                                              color: cream,
+                                              width: active ? 3 : 1.4,
+                                            ),
+                                            boxShadow: const [
+                                              BoxShadow(
+                                                color: Color(0x26000000),
+                                                blurRadius: 5,
+                                                offset: Offset(0, 3),
+                                              ),
+                                            ],
+                                          ),
+                                          child: Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              const Icon(
+                                                Icons.recycling_rounded,
+                                                color: Colors.white,
+                                                size: 28,
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                [
+                                                  tr('bins.plastic'),
+                                                  tr('bins.metal'),
+                                                  tr('bins.paper'),
+                                                ][bin],
+                                                textAlign: TextAlign.center,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ),
                                     ],

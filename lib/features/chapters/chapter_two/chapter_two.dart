@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../../../game/story_controller.dart';
 import '../../../localization/app_localizations.dart';
-//import '../../../ui/water_scene.dart';
 import '../../../ui/widgets.dart';
 
 class ChapterTwoIntro extends StatelessWidget {
@@ -53,6 +52,15 @@ class ChapterTwoGame extends StatelessWidget {
 
   final StoryController story;
 
+  // Anlık Skor Hesabı: Kaçırılan (kurtarılan) her parça +1, yutulan her parça -5
+  int get currentScore => story.chapterTwoScore;
+  int get pollutionLevel {
+    if (story.swallowed >= 3) return 3;
+    if (story.swallowed == 2) return 2;
+    if (story.swallowed == 1) return 1;
+    return 0;
+  }
+
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, c) {
@@ -61,17 +69,44 @@ class ChapterTwoGame extends StatelessWidget {
       return Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: Row(
               children: [
+                // Süre Sayacı
                 StatChip(
                   Icons.timer_outlined,
                   tr('common.seconds', {'count': story.secondsLeft}),
                 ),
-                const Spacer(),
-                StatChip(
-                  Icons.warning_amber_rounded,
-                  tr('chapter2.swallowedShort', {'count': story.swallowed}),
+                const SizedBox(width: 6),
+                // Dar telefonlarda (ör. 390 px) üç rozet sığmıyordu; sağdaki
+                // grup gerekirse hafifçe küçülür, taşmaz.
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Canlı Puan Göstergesi (+1 / -5 sistemi)
+                          StatChip(
+                            Icons.stars_rounded,
+                            AppLocalizations.instance.isTurkish
+                                ? '$currentScore Puan'
+                                : '$currentScore Pts',
+                          ),
+                          const SizedBox(width: 6),
+                          // Yutulan Parça Sayısı
+                          StatChip(
+                            Icons.warning_amber_rounded,
+                            tr('chapter2.swallowedShort', {
+                              'count': story.swallowed,
+                            }),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -98,10 +133,10 @@ class ChapterTwoGame extends StatelessWidget {
                     Positioned(
                       left: story.fishX * arena.maxWidth - 55,
                       top: arena.maxHeight * .72 - 25,
-                      child: const SizedBox(
+                      child: SizedBox(
                         width: 110,
                         height: 66,
-                        child: FishPicture(),
+                        child: FishPicture(pollutionLevel: pollutionLevel),
                       ),
                     ),
                   ],
@@ -154,7 +189,7 @@ class ChapterTwoGame extends StatelessWidget {
             ),
           ),
         ],
-      ); // Column
-    }, // builder
-  ); // LayoutBuilder
+      );
+    },
+  );
 }

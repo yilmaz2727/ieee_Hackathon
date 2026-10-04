@@ -2,12 +2,94 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../audio_manager.dart';
 import '../game/lake_game.dart';
 
 const ink = Color(0xff214e43),
     cream = Color(0xfffff8e9),
     gold = Color(0xffeecb72),
     coral = Color(0xffe88770);
+
+/// Parmak ekrana değdiği anda (onTapDown) tıklama sesini çalıp eylemi
+/// tetikler; parmağın kalkması beklenmez.
+///
+/// Görünüm [builder] içindeki butondan gelir ve aynen korunur. Buton işaretçi
+/// olaylarını almaz (yalnızca bu sarmalayıcı alır); klavye ve ekran okuyucu
+/// ise butonun onPressed'i üzerinden yine aynı eylemi çalıştırır. Ripple
+/// yerine basılıyken buton hafifçe (%95) küçülür.
+class TapDownButton extends StatefulWidget {
+  const TapDownButton({
+    super.key,
+    required this.onTap,
+    required this.builder,
+    this.sound = clickSound,
+  });
+
+  static const clickSound = 'bubble_button_click.mp3';
+
+  /// Dedemin Doğa Kitabı'nı açan ve kitabın içindeki butonlar için.
+  static const bookSound = 'dedenin_kitabi_click.mp3';
+
+  /// null ise buton pasif görünür ve dokunuşa tepki vermez.
+  final VoidCallback? onTap;
+  final Widget Function(VoidCallback? onPressed) builder;
+
+  /// null ise tıklama sesi çalmaz (eylem kendi sesini çalıyorsa).
+  final String? sound;
+
+  @override
+  State<TapDownButton> createState() => _TapDownButtonState();
+}
+
+class _TapDownButtonState extends State<TapDownButton> {
+  bool _down = false;
+
+  void _setDown(bool value) {
+    if (mounted && _down != value) setState(() => _down = value);
+  }
+
+  @override
+  void didUpdateWidget(TapDownButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Basılıyken pasifleşen buton küçük kalmasın.
+    if (widget.onTap == null) _down = false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final action = widget.onTap;
+    final pressed = action == null
+        ? null
+        : () {
+            final sound = widget.sound;
+            if (sound != null) AudioManager.instance.playEffect(sound);
+            action();
+          };
+
+    return MouseRegion(
+      cursor: pressed == null ? MouseCursor.defer : SystemMouseCursors.click,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: pressed == null
+            ? null
+            : (_) {
+                _setDown(true);
+                pressed();
+              },
+        // Buton pasifleşse bile parmak kalkınca eski boyutuna dönebilsin diye
+        // bu ikisi her zaman bağlı.
+        onTapUp: (_) => _setDown(false),
+        onTapCancel: () => _setDown(false),
+        child: AnimatedScale(
+          scale: _down ? .95 : 1,
+          duration: const Duration(milliseconds: 90),
+          curve: Curves.easeOut,
+          child: IgnorePointer(child: widget.builder(pressed)),
+        ),
+      ),
+    );
+  }
+}
 
 class StoryButton extends StatelessWidget {
   const StoryButton(
@@ -17,6 +99,7 @@ class StoryButton extends StatelessWidget {
     this.icon = Icons.arrow_forward_rounded,
     this.secondary = false,
     this.loading = false,
+    this.sound = TapDownButton.clickSound,
   });
 
   final String label;
@@ -24,6 +107,7 @@ class StoryButton extends StatelessWidget {
   final IconData icon;
   final bool secondary;
   final bool loading;
+  final String? sound;
 
   @override
   Widget build(BuildContext context) {
@@ -32,63 +116,60 @@ class StoryButton extends StatelessWidget {
 
     return SizedBox(
       width: double.infinity,
-      child: FilledButton(
-        onPressed: loading ? null : onPressed,
-        style: FilledButton.styleFrom(
-          backgroundColor: background,
-          foregroundColor: foreground,
-          disabledBackgroundColor: loading
-              ? background
-              : ink.withValues(alpha: .15),
-          disabledForegroundColor: loading
-              ? foreground
-              : ink.withValues(alpha: .45),
-          padding: const EdgeInsets.symmetric(
-            horizontal: 18,
-            vertical: 16,
+      child: TapDownButton(
+        onTap: loading ? null : onPressed,
+        sound: sound,
+        builder: (pressed) => FilledButton(
+          onPressed: pressed,
+          style: FilledButton.styleFrom(
+            backgroundColor: background,
+            foregroundColor: foreground,
+            disabledBackgroundColor: loading
+                ? background
+                : ink.withValues(alpha: .15),
+            disabledForegroundColor: loading
+                ? foreground
+                : ink.withValues(alpha: .45),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
           ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Flexible(
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Flexible(
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 12),
-            SizedBox(
-              width: 20,
-              height: 20,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                child: loading
-                    ? SizedBox(
-                        key: const ValueKey('loading'),
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.2,
-                          color: foreground,
-                          semanticsLabel: label,
-                        ),
-                      )
-                    : Icon(
-                        icon,
-                        key: const ValueKey('icon'),
-                        size: 20,
-                      ),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  child: loading
+                      ? SizedBox(
+                          key: const ValueKey('loading'),
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            color: foreground,
+                            semanticsLabel: label,
+                          ),
+                        )
+                      : Icon(icon, key: const ValueKey('icon'), size: 20),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -193,25 +274,73 @@ class _BadgePainter extends CustomPainter {
 }
 
 class FishPicture extends StatelessWidget {
-  const FishPicture({super.key, this.scan = false});
+  const FishPicture({
+    super.key,
+    this.scan = false,
+    this.pollutionLevel = 0,
+  });
+
   final bool scan;
+
+  /// 0 = normal
+  /// 1 = hafif mikroplastik etkisi
+  /// 2 = orta mikroplastik etkisi
+  /// 3 = yoğun mikroplastik etkisi
+  final int pollutionLevel;
+
   @override
-  Widget build(BuildContext context) =>
-      CustomPaint(painter: _FishPainter(scan), size: const Size(340, 210));
+  Widget build(BuildContext context) => CustomPaint(
+        painter: _FishPainter(
+          scan,
+          pollutionLevel,
+        ),
+        size: const Size(340, 210),
+      );
 }
 
 class _FishPainter extends CustomPainter {
-  _FishPainter(this.scan);
+  _FishPainter(
+    this.scan,
+    this.pollutionLevel,
+  );
+
   final bool scan;
+  final int pollutionLevel;
+
+ Color get fishColor {
+  if (scan) {
+    return const Color(0xff84cfc5);
+  }
+
+  switch (pollutionLevel) {
+    case 1:
+      // 1 mikroplastik: hafif etkilenmiş
+      return const Color(0xffa9bd67);
+
+    case 2:
+      // 2 mikroplastik: belirgin şekilde etkilenmiş
+      return const Color(0xff8da94f);
+
+    case 3:
+      // 3+ mikroplastik: iyileştirme oyunundaki hasta balık rengi
+      return const Color(0xff789d39);
+
+    default:
+      // Sağlıklı/orijinal balık
+      return const Color(0xffe8b362);
+  }
+}
+
   @override
   void paint(Canvas c, Size s) {
     drawFish(
       c,
       Offset(s.width * .54, s.height * .51),
       s.width * .73,
-      scan ? const Color(0xff84cfc5) : const Color(0xffe8b362),
+      fishColor,
       1,
     );
+
     if (scan) {
       c.drawOval(
         Rect.fromCenter(
@@ -221,6 +350,7 @@ class _FishPainter extends CustomPainter {
         ),
         Paint()..color = const Color(0x6641716b),
       );
+
       c.drawOval(
         Rect.fromCenter(
           center: Offset(s.width * .52, s.height * .56),
@@ -236,9 +366,11 @@ class _FishPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_FishPainter oldDelegate) => oldDelegate.scan != scan;
+  bool shouldRepaint(_FishPainter oldDelegate) {
+    return oldDelegate.scan != scan ||
+        oldDelegate.pollutionLevel != pollutionLevel;
+  }
 }
-
 /// A deliberately non-food-looking microplastic symbol for Chapter 2.
 /// Shapes represent a hard fragment, a synthetic fibre and a thin film scrap.
 class MicroplasticIcon extends StatelessWidget {

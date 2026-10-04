@@ -20,7 +20,8 @@ class AppLocalizations extends ChangeNotifier {
 
   Future<void> loadInitial(SharedPreferences? prefs) async {
     await _ensureLoaded();
-    final saved = prefs?.getString(_preferenceKey);
+    SharedPreferences localPrefs = prefs ?? await SharedPreferences.getInstance();
+    final saved = localPrefs.getString(_preferenceKey);
     _languageCode = supportedLanguages.contains(saved) ? saved! : 'tr';
   }
 
@@ -28,25 +29,34 @@ class AppLocalizations extends ChangeNotifier {
     String code, {
     SharedPreferences? prefs,
   }) async {
-    if (!supportedLanguages.contains(code) || code == _languageCode) return;
+    if (!supportedLanguages.contains(code)) return;
     await _ensureLoaded();
     _languageCode = code;
-    await prefs?.setString(_preferenceKey, code);
+
+    try {
+      SharedPreferences localPrefs = prefs ?? await SharedPreferences.getInstance();
+      await localPrefs.setString(_preferenceKey, code);
+    } catch (_) {}
+
     notifyListeners();
   }
 
   Future<void> _ensureLoaded() async {
     if (_catalogs.isNotEmpty) return;
-    final raw = await rootBundle.loadString('assets/i18n/translations.json');
-    final decoded = jsonDecode(raw) as Map<String, dynamic>;
-    _catalogs = decoded.map(
-      (language, values) => MapEntry(
-        language,
-        (values as Map<String, dynamic>).map(
-          (key, value) => MapEntry(key, value.toString()),
+    try {
+      final raw = await rootBundle.loadString('assets/i18n/translations.json');
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      _catalogs = decoded.map(
+        (language, values) => MapEntry(
+          language,
+          (values as Map<String, dynamic>).map(
+            (key, value) => MapEntry(key, value.toString()),
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      debugPrint('Translations load error: $e');
+    }
   }
 
   String text(String key, [Map<String, Object?> params = const {}]) {

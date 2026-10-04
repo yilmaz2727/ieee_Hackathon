@@ -45,7 +45,8 @@ void main() {
   test('Two litter catches restore the lagoon and persist between casts', () {
     final c = StoryController()..go(Scene.fishing);
     for (var i = 1; i <= 2; i++) {
-      c.fishingAction();
+      c.castFishingAt(.5, .5);
+      // ~3,1 sn: şamandıra batar (bite).
       for (var j = 0; j < 62; j++) {
         c.tick(.05);
       }
