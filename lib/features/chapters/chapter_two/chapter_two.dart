@@ -54,6 +54,13 @@ class ChapterTwoGame extends StatelessWidget {
 
   // Anlık Skor Hesabı: Kaçırılan (kurtarılan) her parça +1, yutulan her parça -5
   int get currentScore => story.chapterTwoScore;
+  int get pollutionLevel {
+    if (story.swallowed >= 3) return 3;
+    if (story.swallowed == 2) return 2;
+    if (story.swallowed == 1) return 1;
+    return 0;
+  }
+
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, c) {
@@ -126,10 +133,10 @@ class ChapterTwoGame extends StatelessWidget {
                     Positioned(
                       left: story.fishX * arena.maxWidth - 55,
                       top: arena.maxHeight * .72 - 25,
-                      child: const SizedBox(
+                      child: SizedBox(
                         width: 110,
                         height: 66,
-                        child: FishPicture(),
+                        child: FishPicture(pollutionLevel: pollutionLevel),
                       ),
                     ),
                   ],

@@ -178,15 +178,6 @@ class GuardianRewards {
             crossAxisAlignment: pw.CrossAxisAlignment.center,
             children: [
               pw.Text(
-                t('ESMA’NIN YOLCULUĞU', 'ESMA’S JOURNEY'),
-                style: pw.TextStyle(
-                  color: green,
-                  fontSize: 15,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-              pw.SizedBox(height: 30),
-              pw.Text(
                 t('SUYUN KORUYUCUSU', 'GUARDIAN OF WATER'),
                 textAlign: pw.TextAlign.center,
                 style: pw.TextStyle(

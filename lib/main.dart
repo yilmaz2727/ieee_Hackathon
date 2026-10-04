@@ -1689,24 +1689,14 @@ class _StoryScreenState extends State<StoryScreen>
                         onPressed: newGame,
                       ),
 
-                      if (savedChapter > 0)
+                      if (savedChapter > 0 && !story.completed)
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
-
                           child: StoryButton(
-                            story.completed
-                                ? tr('home.realWorldMission')
-                                : tr('home.resume'),
-
+                            tr('home.resume'),
                             secondary: true,
-
-                            icon: story.completed
-                                ? Icons.workspace_premium
-                                : Icons.play_arrow,
-
-                            onPressed: () => story.completed
-                                ? next(Scene.photo)
-                                : resumeSaved(),
+                            icon: Icons.play_arrow,
+                            onPressed: resumeSaved,
                           ),
                         ),
                       const SizedBox(height: 8),

@@ -274,25 +274,73 @@ class _BadgePainter extends CustomPainter {
 }
 
 class FishPicture extends StatelessWidget {
-  const FishPicture({super.key, this.scan = false});
+  const FishPicture({
+    super.key,
+    this.scan = false,
+    this.pollutionLevel = 0,
+  });
+
   final bool scan;
+
+  /// 0 = normal
+  /// 1 = hafif mikroplastik etkisi
+  /// 2 = orta mikroplastik etkisi
+  /// 3 = yoğun mikroplastik etkisi
+  final int pollutionLevel;
+
   @override
-  Widget build(BuildContext context) =>
-      CustomPaint(painter: _FishPainter(scan), size: const Size(340, 210));
+  Widget build(BuildContext context) => CustomPaint(
+        painter: _FishPainter(
+          scan,
+          pollutionLevel,
+        ),
+        size: const Size(340, 210),
+      );
 }
 
 class _FishPainter extends CustomPainter {
-  _FishPainter(this.scan);
+  _FishPainter(
+    this.scan,
+    this.pollutionLevel,
+  );
+
   final bool scan;
+  final int pollutionLevel;
+
+ Color get fishColor {
+  if (scan) {
+    return const Color(0xff84cfc5);
+  }
+
+  switch (pollutionLevel) {
+    case 1:
+      // 1 mikroplastik: hafif etkilenmiş
+      return const Color(0xffa9bd67);
+
+    case 2:
+      // 2 mikroplastik: belirgin şekilde etkilenmiş
+      return const Color(0xff8da94f);
+
+    case 3:
+      // 3+ mikroplastik: iyileştirme oyunundaki hasta balık rengi
+      return const Color(0xff789d39);
+
+    default:
+      // Sağlıklı/orijinal balık
+      return const Color(0xffe8b362);
+  }
+}
+
   @override
   void paint(Canvas c, Size s) {
     drawFish(
       c,
       Offset(s.width * .54, s.height * .51),
       s.width * .73,
-      scan ? const Color(0xff84cfc5) : const Color(0xffe8b362),
+      fishColor,
       1,
     );
+
     if (scan) {
       c.drawOval(
         Rect.fromCenter(
@@ -302,6 +350,7 @@ class _FishPainter extends CustomPainter {
         ),
         Paint()..color = const Color(0x6641716b),
       );
+
       c.drawOval(
         Rect.fromCenter(
           center: Offset(s.width * .52, s.height * .56),
@@ -317,9 +366,11 @@ class _FishPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_FishPainter oldDelegate) => oldDelegate.scan != scan;
+  bool shouldRepaint(_FishPainter oldDelegate) {
+    return oldDelegate.scan != scan ||
+        oldDelegate.pollutionLevel != pollutionLevel;
+  }
 }
-
 /// A deliberately non-food-looking microplastic symbol for Chapter 2.
 /// Shapes represent a hard fragment, a synthetic fibre and a thin film scrap.
 class MicroplasticIcon extends StatelessWidget {
