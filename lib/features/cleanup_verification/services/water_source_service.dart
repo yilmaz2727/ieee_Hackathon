@@ -1,101 +1,302 @@
+import 'dart:convert';
+
 import 'package:geolocator/geolocator.dart';
-import 'local_database_service.dart';
+import 'package:http/http.dart' as http;
+
+class LocationAccuracyException implements Exception {
+  final double accuracy;
+
+  const LocationAccuracyException(this.accuracy);
+}
 
 class WaterSource {
-  final String id;
-  final String name;
-  final double latitude;
-  final double longitude;
-  final bool isCleaned;
-  final String? cleanedBy;
-  final String? cleanedAt;
-
-  WaterSource({
+  const WaterSource({
     required this.id,
     required this.name,
     required this.latitude,
     required this.longitude,
-    this.isCleaned = false,
-    this.cleanedBy,
-    this.cleanedAt,
+    this.description = '',
   });
 
-  // Veritabanından gelen temizlik kaydını WaterSource nesnesine dönüştürme
-  factory WaterSource.fromCleanedSpot(Map<String, dynamic> json) {
-    return WaterSource(
-      id: json['id']?.toString() ?? '',
-      name: json['water_source_name']?.toString() ?? 'Temizlenen Nokta',
-      latitude: (json['latitude'] as num?)?.toDouble() ?? 0.0,
-      longitude: (json['longitude'] as num?)?.toDouble() ?? 0.0,
-      isCleaned: true,
-      cleanedBy: json['user_nickname']?.toString() ?? 'Bir Kahraman',
-      cleanedAt: json['cleaned_at']?.toString(),
-    );
-  }
+  final String id;
+  final String name;
+  final double latitude;
+  final double longitude;
+  final String description;
+}
+
+class WaterSourceCheckResult {
+  const WaterSourceCheckResult({
+    required this.found,
+    required this.message,
+    this.name,
+    this.type,
+    this.latitude,
+    this.longitude,
+  });
+
+  final bool found;
+  final String message;
+
+  final String? name;
+  final String? type;
+
+  final double? latitude;
+  final double? longitude;
 }
 
 class WaterSourceService {
-  // Sabit temel tatlı su kaynakları
-  final List<WaterSource> _defaultSources = [
-    WaterSource(id: '1', name: 'Kent Park Göleti', latitude: 40.78, longitude: 30.39),
-    WaterSource(id: '2', name: 'Yeşil Vadi Dere Kenarı', latitude: 40.79, longitude: 30.40),
-    WaterSource(id: '3', name: 'Mavi Göl Piknik Alanı', latitude: 40.75, longitude: 30.35),
-    WaterSource(id: '4', name: 'Yayla Pınarı', latitude: 40.82, longitude: 30.45),
-  ];
+  static const int searchRadiusMeters = 10000;
 
-  // Hem temel kaynakları hem de oyuncuların veritabanına eklediği temizlenmiş yerleri birleşik çeker
-  Future<List<WaterSource>> getAllSourcesWithCleanups() async {
-    List<WaterSource> combined = List.from(_defaultSources);
+  static const String _overpassUrl =
+      'https://overpass-api.de/api/interpreter';
 
-    try {
-      // Veritabanındaki tüm temizlenmiş noktaları çek
-      final cleanedRecords = await LocalDatabaseService.getAllCleanedSpots();
-      
-      for (var spot in cleanedRecords) {
-        final spotSource = WaterSource.fromCleanedSpot(spot);
-        
-        // Eğer sabit bir kaynağın adı ile eşleşiyorsa o kaynağı "temizlendi" yap
-        final index = combined.indexWhere((s) => s.name.toLowerCase() == spotSource.name.toLowerCase());
-        if (index != -1) {
-          combined[index] = WaterSource(
-            id: combined[index].id,
-            name: combined[index].name,
-            latitude: combined[index].latitude,
-            longitude: combined[index].longitude,
-            isCleaned: true,
-            cleanedBy: spotSource.cleanedBy,
-            cleanedAt: spotSource.cleanedAt,
-          );
-        } else {
-          // Yeni özel bir noktaysa listeye ekle
-          combined.add(spotSource);
-        }
-      }
-    } catch (_) {}
+  /// Telefonun mevcut konumunu alır.
+  Future<Position> getCurrentPosition() async {
+    final serviceEnabled =
+        await Geolocator.isLocationServiceEnabled();
 
-    return combined;
-  }
-
-  // Kullanıcının konumuna en yakın 3 kaynağı bulan metod
-  Future<List<WaterSource>> getClosest3Sources(Position? userPosition) async {
-    final allSources = await getAllSourcesWithCleanups();
-
-    if (userPosition == null) {
-      return allSources.take(3).toList();
+    if (!serviceEnabled) {
+      throw Exception(
+        'Konum servisi kapalı. Lütfen telefonunuzun konumunu açın.',
+      );
     }
 
-    allSources.sort((a, b) {
-      double distA = _quickDistance(userPosition.latitude, userPosition.longitude, a.latitude, a.longitude);
-      double distB = _quickDistance(userPosition.latitude, userPosition.longitude, b.latitude, b.longitude);
-      return distA.compareTo(distB);
-    });
+    LocationPermission permission =
+        await Geolocator.checkPermission();
 
-    return allSources.take(3).toList();
-  }
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (permission == LocationPermission.denied) {
+      throw Exception(
+        'Konum izni verilmedi.',
+      );
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      throw Exception(
+        'Konum izni kalıcı olarak reddedilmiş. '
+        'Telefon ayarlarından uygulamaya konum izni vermelisiniz.',
+      );
+    }
+
+    final position = await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        timeLimit: Duration(seconds: 15),
+      ),
+    );
+
+    // Fake GPS / mock location kontrolü
+    if (position.isMocked) {
+      throw Exception(
+        'Sahte konum algılandı. '
+        'Görev için gerçek GPS konumunuzu kullanmalısınız.',
+      );
+    }
+
+    // 100 metre kontrolü yapacağımız için
+    // aşırı hatalı GPS verisini kabul etmiyoruz.
+if (position.accuracy > 150) {
+  throw LocationAccuracyException(position.accuracy);
 }
 
-double _quickDistance(double lat1, double lon1, double lat2, double lon2) {
-  final double latDiff = lat2 - lat1;
-  final double lonDiff = lon2 - lon1;
-  return latDiff * latDiff + lonDiff * lonDiff;
+    return position;
+  }
+
+  /// Kullanıcının mevcut konumunun 100 metre çevresinde
+  /// uygun su kaynağı olup olmadığını kontrol eder.
+  Future<WaterSourceCheckResult> checkNearbyWaterSource(
+    Position position,
+  ) async {
+    final lat = position.latitude;
+    final lon = position.longitude;
+
+    final query = '''
+[out:json][timeout:15];
+(
+  node(around:$searchRadiusMeters,$lat,$lon)
+    ["natural"="spring"];
+
+  way(around:$searchRadiusMeters,$lat,$lon)
+    ["natural"="spring"];
+
+  node(around:$searchRadiusMeters,$lat,$lon)
+    ["waterway"~"^(river|stream)\$"];
+
+  way(around:$searchRadiusMeters,$lat,$lon)
+    ["waterway"~"^(river|stream)\$"];
+
+  relation(around:$searchRadiusMeters,$lat,$lon)
+    ["waterway"~"^(river|stream)\$"];
+
+  node(around:$searchRadiusMeters,$lat,$lon)
+    ["natural"="water"];
+
+  way(around:$searchRadiusMeters,$lat,$lon)
+    ["natural"="water"];
+
+  relation(around:$searchRadiusMeters,$lat,$lon)
+    ["natural"="water"];
+);
+out tags center;
+''';
+
+    final response = await http
+        .post(
+          Uri.parse(_overpassUrl),
+          headers: const {
+            'Content-Type':
+                'application/x-www-form-urlencoded; charset=UTF-8',
+          },
+          body: {
+            'data': query,
+          },
+        )
+        .timeout(
+          const Duration(seconds: 20),
+        );
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Su kaynağı sorgulanamadı. '
+        'Sunucu kodu: ${response.statusCode}',
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception(
+        'Su kaynağı servisinden geçersiz cevap alındı.',
+      );
+    }
+
+    final elements = decoded['elements'];
+
+    if (elements is! List || elements.isEmpty) {
+      return const WaterSourceCheckResult(
+        found: false,
+        message:
+            '100 metre çevrenizde uygun bir tatlı su kaynağı bulunamadı.',
+      );
+    }
+
+    for (final element in elements) {
+      if (element is! Map) {
+        continue;
+      }
+
+      final rawTags = element['tags'];
+
+      if (rawTags is! Map) {
+        continue;
+      }
+
+      final tags =
+          Map<String, dynamic>.from(rawTags);
+
+      if (!_isAcceptedWaterSource(tags)) {
+        continue;
+      }
+
+      final name = tags['name']?.toString();
+      final type = _getWaterType(tags);
+
+      return WaterSourceCheckResult(
+        found: true,
+        name: name,
+        type: type,
+        latitude: lat,
+        longitude: lon,
+        message:
+            name != null && name.trim().isNotEmpty
+                ? '$name yakınınızda bulundu.'
+                : '100 metre içinde $type bulundu.',
+      );
+    }
+
+    return const WaterSourceCheckResult(
+      found: false,
+      message:
+          '100 metre çevrenizde uygun bir tatlı su kaynağı bulunamadı.',
+    );
+  }
+
+  bool _isAcceptedWaterSource(
+    Map<String, dynamic> tags,
+  ) {
+    final natural = tags['natural']?.toString();
+    final waterway = tags['waterway']?.toString();
+    final water = tags['water']?.toString();
+
+    // Kesinlikle kabul etmek istemediğimiz yapay alanlar.
+    const rejectedWaterTypes = {
+      'swimming_pool',
+      'wastewater',
+      'sewage',
+    };
+
+    if (water != null &&
+        rejectedWaterTypes.contains(water)) {
+      return false;
+    }
+
+    // Doğal kaynak / pınar
+    if (natural == 'spring') {
+      return true;
+    }
+
+    // Dere veya nehir
+    if (waterway == 'stream' ||
+        waterway == 'river') {
+      return true;
+    }
+
+    // Göl, gölet, rezervuar vb.
+    if (natural == 'water') {
+      return true;
+    }
+
+    return false;
+  }
+
+  String _getWaterType(
+    Map<String, dynamic> tags,
+  ) {
+    final natural = tags['natural']?.toString();
+    final waterway = tags['waterway']?.toString();
+    final water = tags['water']?.toString();
+
+    if (natural == 'spring') {
+      return 'doğal su kaynağı';
+    }
+
+    if (waterway == 'stream') {
+      return 'dere';
+    }
+
+    if (waterway == 'river') {
+      return 'nehir';
+    }
+
+    switch (water) {
+      case 'lake':
+        return 'göl';
+
+      case 'pond':
+        return 'gölet';
+
+      case 'reservoir':
+        return 'rezervuar';
+
+      case 'river':
+        return 'nehir';
+
+      default:
+        return 'su kaynağı';
+    }
+  }
 }
