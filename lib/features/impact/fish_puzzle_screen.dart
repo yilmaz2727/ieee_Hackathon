@@ -13,11 +13,7 @@ import '../../localization/app_localizations.dart';
 import '../../ui/widgets.dart';
 
 class FishPuzzleScreen extends StatefulWidget {
-  const FishPuzzleScreen({
-    super.key,
-    required this.story,
-    this.onFinish,
-  });
+  const FishPuzzleScreen({super.key, required this.story, this.onFinish});
 
   final StoryController story;
   final VoidCallback? onFinish;
@@ -28,7 +24,7 @@ class FishPuzzleScreen extends StatefulWidget {
 
 class _FishPuzzleScreenState extends State<FishPuzzleScreen>
     with WidgetsBindingObserver {
-  static const _asset = 'assets/images/kucukcekmece.png';
+  static const _asset = 'assets/images/kucukcekmece_puzzle.jpeg';
 
   final _clock = time.clock.stopwatch();
   final _placed = <int>{};
@@ -111,10 +107,7 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
     try {
       final data = await rootBundle.load(_asset);
       final codec = await ui.instantiateImageCodec(
-        data.buffer.asUint8List(
-          data.offsetInBytes,
-          data.lengthInBytes,
-        ),
+        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
       );
 
       late final ui.FrameInfo frame;
@@ -244,11 +237,7 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
       width: cell * 1.5,
       height: cell * 1.5,
       child: CustomPaint(
-        painter: _PiecePainter(
-          image: _image!,
-          index: index,
-          cell: cell,
-        ),
+        painter: _PiecePainter(image: _image!, index: index, cell: cell),
       ),
     );
   }
@@ -288,13 +277,13 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
                     Text(
                       _tr
                           ? '“Parçaları birleştirince Küçükçekmece Gölü’nü '
-                              'yeniden gördük. Doğada da su, balıklar ve insanlar '
-                              'birbirine bağlı. Plastik küçülse bile yok olmaz; '
-                              'suya ulaşmadan atıkları doğru kutuya atalım!”'
+                                'yeniden gördük. Doğada da su, balıklar ve insanlar '
+                                'birbirine bağlı. Plastik küçülse bile yok olmaz; '
+                                'suya ulaşmadan atıkları doğru kutuya atalım!”'
                           : '“Putting the pieces together revealed Küçükçekmece '
-                              'Lake. Water, fish and people are connected too. '
-                              'Plastic does not disappear when it breaks into '
-                              'smaller pieces. Let’s sort waste before it reaches water!”',
+                                'Lake. Water, fish and people are connected too. '
+                                'Plastic does not disappear when it breaks into '
+                                'smaller pieces. Let’s sort waste before it reaches water!”',
                       textAlign: TextAlign.center,
                       style: const TextStyle(height: 1.6, color: ink),
                     ),
@@ -302,9 +291,9 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
                     Text(
                       _tr
                           ? '9/9 parça • ${_elapsed.inSeconds} saniye\n'
-                              'Puzzle puanı: $_score'
+                                'Puzzle puanı: $_score'
                           : '9/9 pieces • ${_elapsed.inSeconds} seconds\n'
-                              'Puzzle score: $_score',
+                                'Puzzle score: $_score',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
@@ -320,8 +309,8 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
                       onPressed: _saving
                           ? null
                           : _saved
-                              ? widget.onFinish
-                              : _saveResult,
+                          ? widget.onFinish
+                          : _saveResult,
                       icon: Icons.arrow_forward_rounded,
                     ),
                   ],
@@ -337,14 +326,16 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: Listenable.merge([
-        widget.story,
-        AppLocalizations.instance,
-      ]),
+      animation: Listenable.merge([widget.story, AppLocalizations.instance]),
       builder: (context, _) {
         return LayoutBuilder(
           builder: (context, constraints) {
-            final boardSize = min(330.0, constraints.maxWidth - 40);
+            // Parça kutusunda bir satıra 3 parça sığacak şekilde boyutlandır.
+            // Her parçanın çizim alanı, hücre boyutunun 1.5 katı.
+            final boardSize = min(
+              280.0,
+              max(0.0, (constraints.maxWidth - 56.0) / 1.5),
+            );
             final cell = boardSize / 3;
             final pad = cell * .25;
 
@@ -455,28 +446,26 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
                                             details.data == index,
                                         onAcceptWithDetails: (details) =>
                                             _place(details.data),
-                                        builder: (
-                                          context,
-                                          candidates,
-                                          rejected,
-                                        ) {
-                                          return Container(
-                                            decoration: BoxDecoration(
-                                              color: candidates.isNotEmpty
-                                                  ? Colors.green.withValues(
-                                                      alpha: .18,
-                                                    )
-                                                  : Colors.transparent,
-                                              border: _placed.contains(index)
-                                                  ? null
-                                                  : Border.all(
-                                                      color: ink.withValues(
-                                                        alpha: .15,
-                                                      ),
-                                                    ),
-                                            ),
-                                          );
-                                        },
+                                        builder:
+                                            (context, candidates, rejected) {
+                                              return Container(
+                                                decoration: BoxDecoration(
+                                                  color: candidates.isNotEmpty
+                                                      ? Colors.green.withValues(
+                                                          alpha: .18,
+                                                        )
+                                                      : Colors.transparent,
+                                                  border:
+                                                      _placed.contains(index)
+                                                      ? null
+                                                      : Border.all(
+                                                          color: ink.withValues(
+                                                            alpha: .15,
+                                                          ),
+                                                        ),
+                                                ),
+                                              );
+                                            },
                                       ),
                                     ),
                                 ],
@@ -563,12 +552,7 @@ class _PiecePainter extends CustomPainter {
 
     final path = Path()..moveTo(pad, pad);
 
-    void edge(
-      Offset start,
-      Offset end,
-      Offset normal,
-      double direction,
-    ) {
+    void edge(Offset start, Offset end, Offset normal, double direction) {
       final delta = end - start;
 
       Offset p(double t, double depth) =>
