@@ -4,7 +4,7 @@
 
 **Discover the problem. Protect aquatic life. Turn learning into action.**
 
-An interactive environmental education game by **Team Moon**, developed for the **OneAquaHealth IEEE Global Hackathon 2026**.
+An interactive environmental education game, developed for the **OneAquaHealth IEEE Global Hackathon 2026**.
 
 Guardian of the Water follows the story of a discarded straw through three water settings in Türkiye. Through illustrated storytelling, hands-on mini-games, everyday choices, and an optional real-world cleanup mission, it helps young players explore how their actions connect to aquatic ecosystems.
 
