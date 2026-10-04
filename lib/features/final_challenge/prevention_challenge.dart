@@ -19,10 +19,10 @@ class PreventionChallenge extends StatelessWidget {
         'icon': Icons.recycling_rounded,
         'title': t('Şamlar’daki temizlik', 'Cleaning up at Şamlar'),
         'question': t(
-          'Esma kıyıda bir plastik pipet, metal içecek kutusu ve temiz kâğıt buldu. '
-              'Bunları nasıl ayırmalı?',
-          'Esma found a plastic straw, a metal drink can and clean paper on the '
-              'shore. How should she sort them?',
+          'Kıyıda bir plastik pipet, metal içecek kutusu ve temiz kâğıt buldun. '
+              'Bunları nasıl ayırmalısın?',
+          'You found a plastic straw, a metal drink can and clean paper on the '
+              'shore. How should you sort them?',
         ),
         'options': <String>[
           t(
@@ -50,9 +50,9 @@ class PreventionChallenge extends StatelessWidget {
         'icon': Icons.water_drop_outlined,
         'title': t('Pipet gerçekten kayboldu mu?', 'Did the straw disappear?'),
         'question': t(
-          'Esma’nın pipeti suda küçük parçalara ayrıldı. '
+          'Pipetin suda küçük parçalara ayrıldı. '
               'Bu, plastiğin artık zararsız olduğu anlamına gelir mi?',
-          'Esma’s straw broke into tiny pieces in the water. '
+          'Your straw broke into tiny pieces in the water. '
               'Does that mean the plastic is now harmless?',
         ),
         'options': <String>[
@@ -112,9 +112,9 @@ class PreventionChallenge extends StatelessWidget {
         'icon': Icons.search_rounded,
         'title': t('Küçükçekmece’deki keşif', 'The discovery at Küçükçekmece'),
         'question': t(
-          'Esma, balığın içini incelediğinde küçük plastik parçaları gördü. '
+          'Balığın içini incelediğinde küçük plastik parçaları gördün. '
               'Bu keşif bize ne anlatıyor?',
-          'When Esma examined the fish, she saw small plastic pieces inside it. '
+          'When you examined the fish, you saw small plastic pieces inside it. '
               'What does this discovery tell us?',
         ),
         'options': <String>[
@@ -141,21 +141,21 @@ class PreventionChallenge extends StatelessWidget {
       },
       {
         'icon': Icons.volunteer_activism_outlined,
-        'title': t('Esma’nın yeni alışkanlığı', 'Esma’s new habit'),
+        'title': t('Yeni alışkanlığın', 'Your new habit'),
         'question': t(
-          'Esma bir sonraki pikniğe hazırlanıyor. '
-              'Pipetin yolculuğunun yeniden yaşanmaması için hangisini seçmeli?',
-          'Esma is preparing for another picnic. '
+          'Bir sonraki pikniğe hazırlanıyorsun. '
+              'Pipetin yolculuğunun yeniden yaşanmaması için hangisini seçmelisin?',
+          'You are preparing for another picnic. '
               'Which choice can help prevent the straw’s journey from happening again?',
         ),
         'options': <String>[
           t(
             'Tekrar kullanılabilir matarayı almalı ve atıklarını ayrıştırmak için yanında götürmeli.',
-            'Bring a reusable bottle and take her waste away for proper sorting.',
+            'Bring a reusable bottle and take your waste away for proper sorting.',
           ),
           t(
             'Atıklarını göl kenarındaki taşların altına saklamalı.',
-            'Hide her waste under rocks beside the lake.',
+            'Hide your waste under rocks beside the lake.',
           ),
           t(
             'Hafif çöpleri rüzgârın götürmesini beklemeli.',

@@ -107,9 +107,7 @@ class _StoryIntroState extends State<StoryIntro> {
                   foregroundColor: const Color(0xFF244B43),
                   elevation: 0,
                   title: Text(
-                    isTr
-                        ? 'Esma ve Pipetin Yolculuğu'
-                        : 'Esma and the Straw’s Journey',
+                    isTr ? 'Pipetin Yolculuğu' : 'The Straw’s Journey',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
