@@ -392,7 +392,7 @@ class _StoryScreenState extends State<StoryScreen>
   // CH2 sahneleri burada yok: hikâye/oyun müziği onStory'de, iyileştirme
   // müziği ChapterTwoHealingGame'de ayarlanır. CH3 balık tutma, çöp ara
   // ekranı ve iz bulma da yok: ch3_balik_tutma_bg bunlar boyunca sürer.
-  static const _silentScenes = {Scene.rewind, Scene.prevention, Scene.success};
+  static const _silentScenes = {Scene.rewind, Scene.success};
 
   String _differenceSignature() {
     final values = story.differenceFound.toList()..sort();
@@ -463,7 +463,9 @@ class _StoryScreenState extends State<StoryScreen>
     // (playBGM önce çalanı durdurur). Oyun sonu sesi StoryController.tick'te;
     // ara sonuç ekranındaki menü müziğini o jingle'ın ardından başlatır.
     // İyileştirme sonucu ise CH3'e geçişten önce yine hikâye müziği çalar.
-    if (current == Scene.underwater || current == Scene.fishHealingResult) {
+    if (current == Scene.underwater ||
+        current == Scene.fishHealingResult ||
+        current == Scene.prevention) {
       AudioManager.instance.playBGM('chapter_hikaye_bg.mp3');
     } else if (current == Scene.protection) {
       AudioManager.instance.playBGM('ch2_oyun_bg.mp3');
