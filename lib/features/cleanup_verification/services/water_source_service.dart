@@ -37,30 +37,10 @@ class WaterSource {
 class WaterSourceService {
   // Sabit temel tatlı su kaynakları
   final List<WaterSource> _defaultSources = [
-    WaterSource(
-      id: '1',
-      name: 'Kent Park Göleti',
-      latitude: 40.78,
-      longitude: 30.39,
-    ),
-    WaterSource(
-      id: '2',
-      name: 'Yeşil Vadi Dere Kenarı',
-      latitude: 40.79,
-      longitude: 30.40,
-    ),
-    WaterSource(
-      id: '3',
-      name: 'Mavi Göl Piknik Alanı',
-      latitude: 40.75,
-      longitude: 30.35,
-    ),
-    WaterSource(
-      id: '4',
-      name: 'Yayla Pınarı',
-      latitude: 40.82,
-      longitude: 30.45,
-    ),
+    WaterSource(id: '1', name: 'Kent Park Göleti', latitude: 40.78, longitude: 30.39),
+    WaterSource(id: '2', name: 'Yeşil Vadi Dere Kenarı', latitude: 40.79, longitude: 30.40),
+    WaterSource(id: '3', name: 'Mavi Göl Piknik Alanı', latitude: 40.75, longitude: 30.35),
+    WaterSource(id: '4', name: 'Yayla Pınarı', latitude: 40.82, longitude: 30.45),
   ];
 
   // Hem temel kaynakları hem de oyuncuların veritabanına eklediği temizlenmiş yerleri birleşik çeker
@@ -70,14 +50,12 @@ class WaterSourceService {
     try {
       // Veritabanındaki tüm temizlenmiş noktaları çek
       final cleanedRecords = await LocalDatabaseService.getAllCleanedSpots();
-
+      
       for (var spot in cleanedRecords) {
         final spotSource = WaterSource.fromCleanedSpot(spot);
-
+        
         // Eğer sabit bir kaynağın adı ile eşleşiyorsa o kaynağı "temizlendi" yap
-        final index = combined.indexWhere(
-          (s) => s.name.toLowerCase() == spotSource.name.toLowerCase(),
-        );
+        final index = combined.indexWhere((s) => s.name.toLowerCase() == spotSource.name.toLowerCase());
         if (index != -1) {
           combined[index] = WaterSource(
             id: combined[index].id,
@@ -107,18 +85,8 @@ class WaterSourceService {
     }
 
     allSources.sort((a, b) {
-      double distA = _quickDistance(
-        userPosition.latitude,
-        userPosition.longitude,
-        a.latitude,
-        a.longitude,
-      );
-      double distB = _quickDistance(
-        userPosition.latitude,
-        userPosition.longitude,
-        b.latitude,
-        b.longitude,
-      );
+      double distA = _quickDistance(userPosition.latitude, userPosition.longitude, a.latitude, a.longitude);
+      double distB = _quickDistance(userPosition.latitude, userPosition.longitude, b.latitude, b.longitude);
       return distA.compareTo(distB);
     });
 

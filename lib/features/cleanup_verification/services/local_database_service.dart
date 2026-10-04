@@ -113,18 +113,87 @@ class LocalDatabaseService {
     }
   }
 
-  // --- 4. AKTİF KULLANICIYI GETİR ---
   static Future<Map<String, dynamic>?> getCurrentUser() async {
     final activeId = await _readFromDisk(_activeUserKey);
-    final users = await getAllUsers();
-    if (users.isEmpty) return null;
+    if (activeId == null || activeId.isEmpty) return null;
 
-    if (activeId != null) {
-      try {
-        return users.firstWhere((u) => u['id'] == activeId);
-      } catch (_) {}
+    final users = await getAllUsers();
+
+    for (final user in users) {
+      if (user['id'] == activeId) return user;
     }
-    return users.last;
+
+    return null;
+  }
+
+  static Future<void> signInWithNickname(String nickname) async {
+    final cleanNick = nickname.trim();
+    if (cleanNick.length < 2 || cleanNick.length > 24) {
+      throw ArgumentError('Nickname must contain 2–24 characters.');
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final previousId = prefs.getString('current_user_id');
+    final users = await getAllUsers();
+
+    Map<String, dynamic>? user;
+
+    for (final candidate in users) {
+      final existingNick = (candidate['nickname'] as String? ?? '')
+          .trim()
+          .toLowerCase();
+
+      if (existingNick == cleanNick.toLowerCase()) {
+        user = candidate;
+        break;
+      }
+    }
+
+    user ??= await registerUser(nickname: cleanNick, age: 0, country: '');
+
+    final userId = user['id'] as String;
+
+    // Farklı bir nick ile girildiğinde önceki kişinin devam eden oyununu açma.
+    // Kalıcı rozetler ayrı, kullanıcıya özel anahtarlarda saklanır.
+    if (previousId != userId) {
+      const progressKeys = [
+        'cleanup_count',
+        'cleanup_score',
+        'fish_saved',
+        'fish_swallowed',
+        'healing_score',
+        'chapter2_score',
+        'quiz_correct',
+        'quiz_score',
+        'puzzle_score',
+        'bonus_score',
+        'total_score',
+        'cleaned_source_name',
+        'water_source',
+        'ai_photo_verified',
+        'chapter',
+        'completed',
+        'completedAt',
+        'chapter1_difference_found',
+        'chapter2_healing_taps',
+      ];
+
+      for (final key in progressKeys) {
+        await prefs.remove(key);
+      }
+    }
+
+    await _writeToDisk(_activeUserKey, userId);
+
+    final idSaved = await prefs.setString('current_user_id', userId);
+    final nickSaved = await prefs.setString(
+      'current_user_nickname',
+      user['nickname'] as String,
+    );
+
+    if (!idSaved || !nickSaved) {
+      throw StateError('Session could not be saved.');
+    }
   }
 
   // --- 5. OYUN ESNASINDA İSTATİSTİK VE PUANLARI GÜNCELLE ---
@@ -183,15 +252,12 @@ class LocalDatabaseService {
     required int earnedPoints,
   }) async {
     final currentUser = await getCurrentUser();
-
     final userId =
         currentUser?['id'] ?? 'user_${DateTime.now().millisecondsSinceEpoch}';
-
     final nickname = currentUser?['nickname'] ?? 'Kahraman';
 
-    // Temizlik noktasını haritaya kaydet
+    // 1. Temizlik noktasını harita listesine ekle
     List<Map<String, dynamic>> cleanups = await getAllCleanedSpots();
-
     final newSpot = {
       'id': 'spot_${DateTime.now().millisecondsSinceEpoch}',
       'user_id': userId,
@@ -199,33 +265,24 @@ class LocalDatabaseService {
       'water_source_name': waterSourceName,
       'latitude': latitude,
       'longitude': longitude,
-
-      // Sadece bu işlemde kazanılan puan
       'points_earned': earnedPoints,
-
       'cleaned_at': DateTime.now().toIso8601String(),
     };
-
     cleanups.add(newSpot);
-
     await _writeToDisk(_cleanupsTableKey, jsonEncode(cleanups));
 
-    // Burada total_score'a puan EKLEME!
-    // Puan zaten ilgili oyun ekranında hesaplanıyor.
+    // 2. Bu metot yalnızca temizlik noktasını kaydeder.
+    // Puan/bonus güncellemesi çağıran ekran tarafından tek sefer yapılır;
+    // böylece aynı puanın iki kez eklenmesi engellenir.
     final prefs = await SharedPreferences.getInstance();
-
     await prefs.setString('cleaned_source_name', waterSourceName);
 
-    // Kullanıcının temizlediği gerçek kaynağı DB'ye kaydet
     List<Map<String, dynamic>> users = await getAllUsers();
-
     final userIdx = users.indexWhere(
       (u) => u['id'] == userId || u['nickname'] == nickname,
     );
-
     if (userIdx != -1) {
       users[userIdx]['cleaned_source_name'] = waterSourceName;
-
       await _writeToDisk(_usersTableKey, jsonEncode(users));
     }
   }
@@ -233,23 +290,13 @@ class LocalDatabaseService {
   // --- 6.1 CANLI TOPLAM SKORU DİSKE VE VERİTABANINA YAZ ---
   static Future<void> setTotalScore(int total) async {
     final currentUser = await getCurrentUser();
-
     if (currentUser == null) return;
-
     final users = await getAllUsers();
-
-    final index = users.indexWhere((u) => u['id'] == currentUser['id']);
-
-    if (index == -1) return;
-
-    // Liderlik tablosunun kullanacağı gerçek toplam
-    users[index]['total_score'] = total;
-
+    final i = users.indexWhere((u) => u['id'] == currentUser['id']);
+    if (i == -1) return;
+    users[i]['total_score'] = total;
     await _writeToDisk(_usersTableKey, jsonEncode(users));
-
-    // SharedPreferences ile de senkron tut
     final prefs = await SharedPreferences.getInstance();
-
     await prefs.setInt('total_score', total);
   }
 

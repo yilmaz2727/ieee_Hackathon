@@ -44,13 +44,17 @@ class ImpactStore {
           .map((j) => ImpactEntry.fromJson(Map<String, dynamic>.from(j as Map)))
           .toList();
     } catch (_) {
-      throw const FormatException('impact.store.readError');
+      throw const FormatException(
+        'impact.store.readError',
+      );
     }
   }
 
   Future<void> write(List<ImpactEntry> entries) async {
     if (prefs == null) {
-      throw StateError('impact.store.unavailable');
+      throw StateError(
+        'impact.store.unavailable',
+      );
     }
     final data = jsonEncode(entries.map((e) => e.toJson()).toList());
     if (utf8.encode(data).length > 2800000) {

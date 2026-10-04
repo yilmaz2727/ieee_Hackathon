@@ -20,20 +20,21 @@ class AppLocalizations extends ChangeNotifier {
 
   Future<void> loadInitial(SharedPreferences? prefs) async {
     await _ensureLoaded();
-    SharedPreferences localPrefs =
-        prefs ?? await SharedPreferences.getInstance();
+    SharedPreferences localPrefs = prefs ?? await SharedPreferences.getInstance();
     final saved = localPrefs.getString(_preferenceKey);
     _languageCode = supportedLanguages.contains(saved) ? saved! : 'tr';
   }
 
-  Future<void> setLanguage(String code, {SharedPreferences? prefs}) async {
+  Future<void> setLanguage(
+    String code, {
+    SharedPreferences? prefs,
+  }) async {
     if (!supportedLanguages.contains(code)) return;
     await _ensureLoaded();
     _languageCode = code;
 
     try {
-      SharedPreferences localPrefs =
-          prefs ?? await SharedPreferences.getInstance();
+      SharedPreferences localPrefs = prefs ?? await SharedPreferences.getInstance();
       await localPrefs.setString(_preferenceKey, code);
     } catch (_) {}
 
@@ -59,7 +60,9 @@ class AppLocalizations extends ChangeNotifier {
   }
 
   String text(String key, [Map<String, Object?> params = const {}]) {
-    var value = _catalogs[_languageCode]?[key] ?? _catalogs['tr']?[key] ?? key;
+    var value = _catalogs[_languageCode]?[key] ??
+        _catalogs['tr']?[key] ??
+        key;
     for (final entry in params.entries) {
       value = value.replaceAll('{${entry.key}}', '${entry.value}');
     }

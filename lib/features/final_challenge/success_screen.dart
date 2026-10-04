@@ -37,9 +37,7 @@ class FinalSuccessScreen extends StatelessWidget {
                 _MiniResult(
                   title: tr('success.finalScore'),
                   value: '$finalQuizScore',
-                  note: tr('success.correct', {
-                    'count': story.preventionCorrect,
-                  }),
+                  note: tr('success.correct', {'count': story.preventionCorrect}),
                 ),
                 const SizedBox(height: 18),
                 Text(
@@ -104,35 +102,35 @@ class _MiniResult extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(
-      color: const Color(0xffe3ebd8),
-      borderRadius: BorderRadius.circular(16),
-    ),
-    child: Column(
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 9,
-            color: ink,
-            fontWeight: FontWeight.bold,
-          ),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xffe3ebd8),
+          borderRadius: BorderRadius.circular(16),
         ),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 30,
-            color: ink,
-            fontWeight: FontWeight.bold,
-          ),
+        child: Column(
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 9,
+                color: ink,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 30,
+                color: ink,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Text(
+              note,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 10, color: ink),
+            ),
+          ],
         ),
-        Text(
-          note,
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 10, color: ink),
-        ),
-      ],
-    ),
-  );
+      );
 }

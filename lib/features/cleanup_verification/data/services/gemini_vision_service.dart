@@ -1,83 +1,183 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:image/image.dart' as img;
+
 import '../../domain/entities/verification_result.dart';
 
 class GeminiVisionService {
-  // Production environment configuration mapping preventing API Key leakage.
-  // Requires `--dart-define=GEMINI_API_KEY=...` or `--dart-define-from-file=.env` during build.
-  static const String _apiKey = String.fromEnvironment('GEMINI_API_KEY');
-
-  // Yüksek Performanslı Hafif Modeller (En Hızlıdan > Ağır Modellere)
+ 
+  static const String _apiKey = String.fromEnvironment(
+  'GEMINI_API_KEY',
+);
+     
   final List<String> _modelsToTry = [
     'gemini-3.5-flash-lite',
     'gemini-3.5-flash',
     'gemini-3.0-flash',
   ];
 
-  Future<VerificationResult> verifyCleanupPhoto(Uint8List imageBytes) async {
-    const prompt =
-        'Doğrula: Çöp torbası veya toplanan atık var mı? Format: {"accepted": bool, "reason": string}';
+  Future<VerificationResult> verifyCleanupPhoto(
+    Uint8List imageBytes,
+  ) async {
+    if (_apiKey.isEmpty) {
+      return VerificationResult.fromJson({
+        'accepted': false,
+        'reason':
+            'AI doğrulama servisi yapılandırılmamış. GEMINI_API_KEY bulunamadı.',
+      });
+    }
+
+    const prompt = '''
+Bu fotoğrafı çevre temizliği görevi açısından değerlendir.
+
+Fotoğrafta aşağıdakilerden en az biri açıkça görülmelidir:
+- Toplanmış çöp veya atık
+- Plastik şişe, ambalaj veya benzeri atıklar
+- Çöp torbası veya atık toplama kabı
+- Doğal bir alanın temizlendiğine dair makul görsel kanıt
+
+Şunları kabul etme:
+- Sadece doğa veya manzara fotoğrafı
+- Hiç çöp/atık görünmeyen fotoğraf
+- Görevle ilgisiz fotoğraf
+- Temizlik yapıldığını doğrulamaya yetmeyen fotoğraf
+
+Yalnızca aşağıdaki JSON formatında cevap ver:
+
+{
+  "accepted": true veya false,
+  "reason": "Kısa açıklama"
+}
+''';
 
     Uint8List optimizedBytes = imageBytes;
+
     try {
       final image = img.decodeImage(imageBytes);
+
       if (image != null) {
         var resized = image;
-        if (image.width > 512 || image.height > 512) {
-          if (image.width > image.height) {
-            resized = img.copyResize(image, width: 512);
+
+        if (image.width > 768 || image.height > 768) {
+          if (image.width >= image.height) {
+            resized = img.copyResize(
+              image,
+              width: 768,
+            );
           } else {
-            resized = img.copyResize(image, height: 512);
+            resized = img.copyResize(
+              image,
+              height: 768,
+            );
           }
         }
+
         optimizedBytes = Uint8List.fromList(
-          img.encodeJpg(resized, quality: 65),
+          img.encodeJpg(
+            resized,
+            quality: 75,
+          ),
         );
-        debugPrint('Image optimized: ${optimizedBytes.length} bytes');
+
+        debugPrint(
+          'Image optimized: ${optimizedBytes.length} bytes',
+        );
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Image optimization error: $e');
+    }
 
     for (final modelName in _modelsToTry) {
       try {
-        debugPrint('Trying Gemini model: $modelName...');
-        final model = GenerativeModel(model: modelName, apiKey: _apiKey);
+        debugPrint(
+          'Trying Gemini model: $modelName',
+        );
 
-        final imagePart = DataPart('image/jpeg', optimizedBytes);
+        final model = GenerativeModel(
+          model: modelName,
+          apiKey: _apiKey,
+          generationConfig: GenerationConfig(
+            temperature: 0.1,
+            responseMimeType: 'application/json',
+          ),
+        );
+
         final response = await model
             .generateContent([
-              Content.multi([TextPart(prompt), imagePart]),
+              Content.multi([
+                TextPart(prompt),
+                DataPart(
+                  'image/jpeg',
+                  optimizedBytes,
+                ),
+              ]),
             ])
-            .timeout(const Duration(seconds: 8));
+            .timeout(
+              const Duration(seconds: 12),
+            );
 
         final responseText = response.text;
-        if (responseText == null || responseText.isEmpty) {
-          throw Exception('Model boş yanıt döndürdü.');
+
+        if (responseText == null ||
+            responseText.trim().isEmpty) {
+          throw Exception(
+            'Model boş yanıt döndürdü.',
+          );
         }
 
-        String cleanedJson = responseText.trim();
+        var cleanedJson = responseText.trim();
+
         if (cleanedJson.startsWith('```json')) {
-          cleanedJson = cleanedJson.replaceFirst('```json', '').trim();
-        }
-        if (cleanedJson.startsWith('```')) {
-          cleanedJson = cleanedJson.replaceFirst('```', '').trim();
-        }
-        if (cleanedJson.endsWith('```')) {
-          cleanedJson = cleanedJson.substring(0, cleanedJson.length - 3).trim();
+          cleanedJson = cleanedJson
+              .substring(7)
+              .trim();
+        } else if (cleanedJson.startsWith('```')) {
+          cleanedJson = cleanedJson
+              .substring(3)
+              .trim();
         }
 
-        final Map<String, dynamic> jsonMap = jsonDecode(cleanedJson);
-        return VerificationResult.fromJson(jsonMap);
+        if (cleanedJson.endsWith('```')) {
+          cleanedJson = cleanedJson
+              .substring(
+                0,
+                cleanedJson.length - 3,
+              )
+              .trim();
+        }
+
+        final decoded = jsonDecode(cleanedJson);
+
+        if (decoded is! Map<String, dynamic>) {
+          throw const FormatException(
+            'Gemini geçerli bir JSON nesnesi döndürmedi.',
+          );
+        }
+
+        if (decoded['accepted'] is! bool) {
+          throw const FormatException(
+            'accepted alanı bool değil.',
+          );
+        }
+
+        return VerificationResult.fromJson(
+          decoded,
+        );
       } catch (e) {
-        debugPrint('Hata ($modelName): $e');
+        debugPrint(
+          'Gemini error ($modelName): $e',
+        );
       }
     }
 
-    // Fail-safe default
+    // AI gerçekten doğrulama yapamadıysa
+    // görevi otomatik başarılı saymıyoruz.
     return VerificationResult.fromJson({
-      "accepted": true,
-      "reason": "Temizlik başarıyla doğrulandı!",
+      'accepted': false,
+      'reason':
+          'Fotoğraf şu anda AI tarafından doğrulanamadı. Lütfen tekrar deneyin.',
     });
   }
 }

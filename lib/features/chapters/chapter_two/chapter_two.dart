@@ -2,33 +2,14 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
-import '../../../audio_manager.dart';
 import '../../../game/story_controller.dart';
 import '../../../localization/app_localizations.dart';
 import '../../../ui/widgets.dart';
 
-class ChapterTwoIntro extends StatefulWidget {
+class ChapterTwoIntro extends StatelessWidget {
   const ChapterTwoIntro({super.key, required this.onStart});
 
   final VoidCallback onStart;
-
-  @override
-  State<ChapterTwoIntro> createState() => _ChapterTwoIntroState();
-}
-
-class _ChapterTwoIntroState extends State<ChapterTwoIntro> {
-  @override
-  void initState() {
-    super.initState();
-    // CH2 hikâye ekranı: önceki müzik (menü) yerini hikâye müziğine bırakır.
-    AudioManager.instance.playBGM('chapter_hikaye_bg.mp3');
-  }
-
-  void _start() {
-    // Hikâye müziği durur, oyun müziği başlar.
-    AudioManager.instance.playBGM('ch2_oyun_bg.mp3');
-    widget.onStart();
-  }
 
   @override
   Widget build(BuildContext context) => Column(
@@ -57,7 +38,7 @@ class _ChapterTwoIntroState extends State<ChapterTwoIntro> {
                 style: TextStyle(color: ink, fontSize: 9),
               ),
               const SizedBox(height: 18),
-              StoryButton(tr('chapter2.start'), onPressed: _start),
+              StoryButton(tr('chapter2.start'), onPressed: onStart),
             ],
           ),
         ),
@@ -72,8 +53,7 @@ class ChapterTwoGame extends StatelessWidget {
   final StoryController story;
 
   // Anlık Skor Hesabı: Kaçırılan (kurtarılan) her parça +1, yutulan her parça -5
-  int get currentScore => max(0, (story.avoided * 1) - (story.swallowed * 5));
-
+  int get currentScore => story.chapterTwoScore;
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, c) {

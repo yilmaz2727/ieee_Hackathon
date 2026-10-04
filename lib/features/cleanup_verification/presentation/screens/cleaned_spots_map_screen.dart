@@ -7,7 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import '../../services/water_source_service.dart';
 import '../../services/local_database_service.dart';
 import '../../../../localization/app_localizations.dart';
-import 'leaderboard_screen.dart';
+
 
 class CleanedSpotsMapScreen extends StatefulWidget {
   final double? initialLat;
@@ -162,74 +162,74 @@ class _CleanedSpotsMapScreenState extends State<CleanedSpotsMapScreen> {
   }
 
   Future<void> _handleConfirmSpot() async {
-    if (_activePendingSource == null) return;
+    final source = _activePendingSource;
+    if (source == null || _isSaving) return;
 
     setState(() => _isSaving = true);
 
     try {
       final prefs = await SharedPreferences.getInstance();
+
+      if (prefs.getBool('ai_photo_verified') != true ||
+          prefs.getBool('completed') != true ||
+          prefs.getString('cleaned_source_name') != source.name) {
+        throw StateError('An approved mission is required.');
+      }
+
       final currentUser = await LocalDatabaseService.getCurrentUser();
+      if (currentUser == null) throw StateError('No active player.');
 
-      // Fotoğraf doğrulamasından kazanılan gerçek bonus
-      const int photoBonus = 20;
+      final spots = await LocalDatabaseService.getAllCleanedSpots();
 
-      await prefs.setBool('ai_photo_verified', true);
-
-      // Mevcut GERÇEK toplam puan
-      final int currentTotal =
-          prefs.getInt('total_score') ??
-          (currentUser?['total_score'] as int? ?? 0);
-
-      // Sadece +20 ekle
-      final int finalGameScore = currentTotal + photoBonus;
-
-      // Bonus ayrıca saklansın
-      final int currentBonus = prefs.getInt('bonus_score') ?? 0;
-      await prefs.setInt('bonus_score', currentBonus + photoBonus);
-
-      // Gerçek temizlenen kaynak
-      await prefs.setString('cleaned_source_name', _activePendingSource!.name);
-
-      // Haritadaki nokta sadece BU işlemde kazanılan puanı göstermeli.
-      // Buraya finalGameScore VERME!
-      await LocalDatabaseService.saveCleanedSpot(
-        waterSourceName: _activePendingSource!.name,
-        latitude: _activePendingSource!.latitude,
-        longitude: _activePendingSource!.longitude,
-        earnedPoints: photoBonus,
+      final alreadySaved = spots.any(
+        (spot) =>
+            spot['user_id'] == currentUser['id'] &&
+            spot['water_source_name'] == source.name &&
+            ((spot['latitude'] as num).toDouble() - source.latitude).abs() <
+                0.00001 &&
+            ((spot['longitude'] as num).toDouble() - source.longitude).abs() <
+                0.00001,
       );
 
-      // Liderlik tablosundaki toplam puanı gerçek değerle eşitle
-      await LocalDatabaseService.setTotalScore(finalGameScore);
-
-      await _loadSpots();
+      if (!alreadySaved) {
+        await LocalDatabaseService.saveCleanedSpot(
+          waterSourceName: source.name,
+          latitude: source.latitude,
+          longitude: source.longitude,
+          earnedPoints: 20,
+        );
+      }
 
       if (!mounted) return;
 
-      setState(() {
-        _activePendingSource = null;
-      });
+      setState(() => _activePendingSource = null);
+      await _loadSpots();
+
+      if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             _isTr
-                ? 'Nokta haritaya eklendi! Toplam Skorun: $finalGameScore 🌟'
-                : 'Spot marked on map! Total Score: $finalGameScore 🌟',
+                ? 'Görev yerin kaydedildi. Rozetine geçebilirsin!'
+                : 'Mission location saved. You can view your badge!',
           ),
-          backgroundColor: Colors.green,
         ),
       );
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Hata: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _isTr
+                ? 'Nokta kaydedilemedi. Fotoğraf onayını kontrol edip tekrar dene.'
+                : 'Could not save the location. Check photo approval and retry.',
+          ),
+        ),
+      );
     } finally {
-      if (mounted) {
-        setState(() => _isSaving = false);
-      }
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -256,20 +256,7 @@ class _CleanedSpotsMapScreenState extends State<CleanedSpotsMapScreen> {
               child: Column(
                 children: [
                   AppBar(
-                    leading: IconButton(
-                      icon: const Icon(
-                        Icons.arrow_back_ios_new_rounded,
-                        color: primaryGreen,
-                        size: 20,
-                      ),
-                      onPressed: () {
-                        if (widget.onBack != null) {
-                          widget.onBack!();
-                        } else {
-                          Navigator.maybePop(context);
-                        }
-                      },
-                    ),
+                    automaticallyImplyLeading: false,
                     title: Text(
                       _isTr
                           ? "Topluluk Temizlikleri (${_spots.length})"
@@ -479,26 +466,28 @@ class _CleanedSpotsMapScreenState extends State<CleanedSpotsMapScreen> {
                                         ),
                                       ),
                                       icon: const Icon(
-                                        Icons.leaderboard_rounded,
+                                        Icons.workspace_premium_rounded,
                                         size: 20,
                                       ),
                                       label: Text(
-                                        _isTr
-                                            ? 'Liderlik Tablosunu Gör'
-                                            : 'View Leaderboard',
+                                        widget.pendingSource != null
+                                            ? (_isTr
+                                                  ? 'Rozetimi ve Sertifikamı Gör'
+                                                  : 'View My Badge and Certificate')
+                                            : (_isTr
+                                                  ? 'Oyuna Dön'
+                                                  : 'Return to Game'),
                                         style: const TextStyle(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 13,
                                         ),
                                       ),
                                       onPressed: () {
-                                        Navigator.pushReplacement(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) =>
-                                                const LeaderboardScreen(),
-                                          ),
-                                        );
+                                        if (widget.onBack != null) {
+                                          widget.onBack!();
+                                        } else {
+                                          Navigator.of(context).maybePop();
+                                        }
                                       },
                                     ),
                                   ),

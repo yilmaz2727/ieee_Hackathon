@@ -39,7 +39,7 @@ import 'features/auth/presentation/screens/login_screen.dart';
 import 'features/impact/fish_puzzle_screen.dart';
 
 import 'features/cleanup_verification/presentation/screens/final_mission_screen.dart';
-
+import 'services/guardian_rewards.dart';
 import 'features/cleanup_verification/presentation/screens/cleaned_spots_map_screen.dart';
 
 Future<void> main() async {
@@ -58,6 +58,20 @@ Future<void> main() async {
   AudioManager.instance.loadMusicSettings(prefs);
 
   await AudioManager.init();
+  if (prefs != null) {
+    final activeUser = await LocalDatabaseService.getCurrentUser();
+
+    if (activeUser == null) {
+      await prefs.remove('current_user_id');
+      await prefs.remove('current_user_nickname');
+    } else {
+      await prefs.setString('current_user_id', activeUser['id'] as String);
+      await prefs.setString(
+        'current_user_nickname',
+        activeUser['nickname'] as String,
+      );
+    }
+  }
 
   runApp(EsmaApp(prefs: prefs));
 }
@@ -236,15 +250,21 @@ class _StoryScreenState extends State<StoryScreen>
     })..start();
   }
 
-  // Bu sahnelere geçilince müzik durur. CH2 kendi seslerini yönetiyor; CH3 ve
-  // final şimdilik sessiz. photo, impactMap ve reward listede yok: finalden
-  // sonra zaten sessizler, ana menüden açılınca menü müziği sürer.
+  // Bu sahnelere geçilince müzik durur. photo, impactMap ve reward listede
+
+  // yok: finalden sonra zaten sessizler, ana menüden açılınca menü müziği sürer.
+
   static const _silentScenes = {
     Scene.underwater,
+
     Scene.protection,
+
     Scene.protectionResult,
+
     Scene.fishHealing,
+
     Scene.fishHealingResult,
+
     Scene.fishing,
 
     Scene.catchWaste,
@@ -316,7 +336,11 @@ class _StoryScreenState extends State<StoryScreen>
     if (current == Scene.home) {
       AudioManager.instance.playBGM('ana_menu_bg.mp3');
     }
-    // Henüz sesi bağlanmamış bölümler bilinçli olarak müziksiz.
+
+    // CH2, CH3 ve final şimdilik bilinçli olarak müziksiz; ses entegrasyonu
+
+    // arayüz ve mekanik güncellemeleri bitince ayrıca yapılacak.
+
     if (_silentScenes.contains(current)) {
       AudioManager.instance.stopBGM();
     }
@@ -828,32 +852,31 @@ class _StoryScreenState extends State<StoryScreen>
       ],
     ),
   );
-  // Diğer üst butonlar gibi: dokunulduğu an tıklama sesi + küçülme.
-  Widget settingsButton() => Tooltip(
-    message: AppLocalizations.instance.isTurkish ? 'Ayarlar' : 'Settings',
-    triggerMode: TooltipTriggerMode.manual,
-    child: TapDownButton(
-      onTap: () async {
-        final wasPaused = story.paused;
-        story.setPaused(true);
 
-        try {
-          await openSettings();
-        } finally {
-          if (mounted) {
-            story.setPaused(wasPaused);
-          }
-        }
-      },
-      builder: (pressed) => IconButton(
-        icon: const Icon(Icons.settings_rounded, color: ink, size: 23),
-        style: IconButton.styleFrom(
-          backgroundColor: cream,
-          shape: const CircleBorder(),
-        ),
-        onPressed: pressed,
-      ),
+  Widget settingsButton() => IconButton(
+    tooltip: AppLocalizations.instance.isTurkish ? 'Ayarlar' : 'Settings',
+
+    icon: const Icon(Icons.settings_rounded, color: ink, size: 23),
+
+    style: IconButton.styleFrom(
+      backgroundColor: cream,
+
+      shape: const CircleBorder(),
     ),
+
+    onPressed: () async {
+      final wasPaused = story.paused;
+
+      story.setPaused(true);
+
+      try {
+        await openSettings();
+      } finally {
+        if (mounted) {
+          story.setPaused(wasPaused);
+        }
+      }
+    },
   );
 
   Future<void> openSettings() async {
@@ -1208,7 +1231,7 @@ class _StoryScreenState extends State<StoryScreen>
 
             color: ink,
 
-            backgroundColor: const Color(0xffded8bc),
+            backgroundColor: const Color(0xffded8bc), 
           ),
         ],
       ),
@@ -1217,7 +1240,7 @@ class _StoryScreenState extends State<StoryScreen>
 
   Widget body() => switch (story.scene) {
     Scene.home => home(),
-
+Scene.reward => reward(),
     Scene.intro => ChapterOneIntro(onStart: () => next(Scene.cleanupFirst)),
 
     Scene.cleanupFirst => ChapterOne(story: story),
@@ -1368,12 +1391,18 @@ class _StoryScreenState extends State<StoryScreen>
     ),
 
     // 1. SADECE PUZZLE:
-    Scene.fishPuzzle => FishPuzzleScreen(onFinish: () => next(Scene.rewind)),
+    Scene.fishPuzzle => FishPuzzleScreen(
+      story: story,
+      onFinish: () => next(Scene.rewind),
+    ),
 
-    Scene.reward => reward(),
-
-    // 2. TESTTEN SONRA AI FOTOĞRAF DOĞRULAMA (Gerçek Görev):
-    Scene.photo => const FinalMissionScreen(),
+    Scene.photo => FinalMissionScreen(
+      beforeVerify: () async {
+        await saveQueue;
+        await syncAllGameScoresToDisk();
+      },
+      onComplete: () => next(Scene.reward),
+    ),
 
     // 3. ONAYDAN SONRAKİ TOPLULUK HARİTASI:
     Scene.impactMap => CleanedSpotsMapScreen(
@@ -1511,6 +1540,15 @@ class _StoryScreenState extends State<StoryScreen>
                                 : story.resumeChapter(savedChapter),
                           ),
                         ),
+                      const SizedBox(height: 8),
+                      StoryButton(
+                        AppLocalizations.instance.isTurkish
+                            ? 'Rozetim ve sertifikam'
+                            : 'My badge and certificate',
+                        secondary: true,
+                        icon: Icons.workspace_premium_outlined,
+                        onPressed: () => next(Scene.reward),
+                      ),
 
                       TapDownButton(
                         onTap: () => next(Scene.impactMap),
@@ -1799,127 +1837,8 @@ class _StoryScreenState extends State<StoryScreen>
     ),
   );
 
-  Widget reward() => SingleChildScrollView(
-    padding: const EdgeInsets.all(20),
-
-    child: Paper(
-      child: Column(
-        children: [
-          const Badge(size: 120),
-
-          heading(tr('reward.title')),
-
-          const SizedBox(height: 8),
-
-          Text(tr('reward.badge'), style: const TextStyle(color: ink)),
-
-          const SizedBox(height: 12),
-
-          ValueListenableBuilder<TextEditingValue>(
-            valueListenable: nameController,
-
-            builder: (context, value, _) => Text(
-              value.text.trim().isEmpty
-                  ? tr('reward.yourName')
-                  : value.text.trim(),
-
-              textAlign: TextAlign.center,
-
-              style: const TextStyle(
-                fontFamily: 'StorySerif',
-
-                fontWeight: FontWeight.bold,
-
-                fontSize: 22,
-
-                color: ink,
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          Form(
-            key: nameForm,
-
-            child: TextFormField(
-              controller: nameController,
-
-              maxLength: 60,
-
-              textCapitalization: TextCapitalization.words,
-
-              autofillHints: const [AutofillHints.name],
-
-              decoration: InputDecoration(
-                labelText: tr('reward.nameLabel'),
-
-                filled: true,
-
-                fillColor: Colors.white,
-
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-
-              validator: (value) => value == null || value.trim().isEmpty
-                  ? tr('reward.nameValidation')
-                  : null,
-            ),
-          ),
-
-          const SizedBox(height: 6),
-
-          Text(
-            tr('reward.namePrivacy'),
-
-            style: TextStyle(color: ink, fontSize: 10, height: 1.5),
-
-            textAlign: TextAlign.center,
-          ),
-
-          const SizedBox(height: 18),
-
-          StoryButton(
-            'Türkçe PDF',
-
-            icon: Icons.download_rounded,
-
-            loading: exporting && exportingLanguage == 'tr',
-
-            onPressed: exporting ? null : () => export(languageCode: 'tr'),
-          ),
-
-          const SizedBox(height: 10),
-
-          StoryButton(
-            'English PDF',
-
-            secondary: true,
-
-            icon: Icons.download_rounded,
-
-            loading: exporting && exportingLanguage == 'en',
-
-            onPressed: exporting ? null : () => export(languageCode: 'en'),
-          ),
-
-          const SizedBox(height: 10),
-
-          StoryButton(
-            tr('common.home'),
-
-            secondary: true,
-
-            icon: Icons.home_outlined,
-
-            onPressed: () => next(Scene.home),
-          ),
-        ],
-      ),
-    ),
-  );
+  Widget reward() =>
+      GuardianRewardScreen(onHome: () => next(Scene.home), onReplay: newGame);
 
   Future<void> _resetPersistedGameProgress() async {
     final prefs = widget.prefs;

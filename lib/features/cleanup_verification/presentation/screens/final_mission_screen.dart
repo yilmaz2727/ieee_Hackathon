@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
+import '../../../../services/guardian_rewards.dart';
 import '../../data/services/gemini_vision_service.dart';
 import '../../services/water_source_service.dart';
 // Removed unused DB import
@@ -14,7 +14,14 @@ import '../../../../localization/app_localizations.dart';
 import 'cleaned_spots_map_screen.dart';
 
 class FinalMissionScreen extends StatefulWidget {
-  const FinalMissionScreen({super.key});
+  const FinalMissionScreen({
+    super.key,
+    required this.beforeVerify,
+    required this.onComplete,
+  });
+
+  final Future<void> Function() beforeVerify;
+  final VoidCallback onComplete;
 
   @override
   State<FinalMissionScreen> createState() => _FinalMissionScreenState();
@@ -333,132 +340,105 @@ class _FinalMissionScreenState extends State<FinalMissionScreen> {
 
   // Gemini Doğrulaması
   Future<void> _processVerification(WaterSource source, Uint8List bytes) async {
+    if (_isVerifying || !mounted) return;
+
     setState(() => _isVerifying = true);
 
     try {
-      var result = await _geminiService.verifyCleanupPhoto(bytes);
+      // Ana oyunun bekleyen puan kayıtları bitmeden AI işlemine geçme.
+      await widget.beforeVerify();
 
-      if (result.accepted) {
-        final prefs = await SharedPreferences.getInstance();
-        final nickname = prefs.getString('current_user_nickname') ?? 'Kahraman';
+      final result = await _geminiService.verifyCleanupPhoto(bytes);
+      if (!mounted) return;
 
-        if (mounted) setState(() => _isVerifying = false);
-        if (mounted) _showSuccessDialog(source, nickname);
-      } else {
-        if (mounted) setState(() => _isVerifying = false);
-        if (mounted) _showErrorDialog(result.reason);
+      if (!result.accepted) {
+        _showErrorDialog(result.reason);
+        return;
       }
-    } catch (e) {
+
+      await GuardianRewards.recordApprovedRun(source.name);
+
+      final prefs = await SharedPreferences.getInstance();
+      final nickname = prefs.getString('current_user_nickname') ?? '';
+
+      if (mounted) {
+        _showSuccessDialog(source, nickname);
+      }
+    } catch (_) {
+      if (mounted) {
+        _showErrorDialog(
+          _isTr
+              ? 'Doğrulama veya kayıt tamamlanamadı. Lütfen tekrar dene.'
+              : 'Verification or saving failed. Please try again.',
+        );
+      }
+    } finally {
       if (mounted) setState(() => _isVerifying = false);
-      if (mounted) _showErrorDialog(e.toString());
     }
   }
 
-  void _showSuccessDialog(WaterSource source, String nickname) {
-    showDialog(
+  Future<void> _showSuccessDialog(WaterSource source, String nickname) async {
+    await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => Center(
-        child: Container(
-          width: double.infinity,
-          constraints: const BoxConstraints(maxWidth: 380),
-          child: Dialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
-            ),
-            backgroundColor: softBeige,
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFE3EBD8),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.verified_rounded,
-                      color: primaryGreen,
-                      size: 48,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    _isTr ? 'Tebrikler!' : 'Congratulations!',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: primaryGreen,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _isTr
-                        ? '${_getLocalizedSourceName(source.name)} başarıyla temizlendi!'
-                        : '${_getLocalizedSourceName(source.name)} has been successfully cleaned!',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Colors.black87,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: primaryGreen,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      icon: const Icon(Icons.map_rounded, size: 18),
-                      label: Text(
-                        _isTr
-                            ? 'Temizliği Haritada İşaretle 🗺️'
-                            : 'Mark on Map 🗺️',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
-                      ),
-                      onPressed: () {
-                        Navigator.pop(context);
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => CleanedSpotsMapScreen(
-                              initialLat:
-                                  _userPosition?.latitude ?? source.latitude,
-                              initialLng:
-                                  _userPosition?.longitude ?? source.longitude,
-                              pendingSource: WaterSource(
-                                id: source.id,
-                                name: source.name,
-                                latitude:
-                                    _userPosition?.latitude ?? source.latitude,
-                                longitude:
-                                    _userPosition?.longitude ??
-                                    source.longitude,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
+      builder: (dialogContext) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          backgroundColor: softBeige,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
           ),
+          title: Text(_isTr ? 'Görevin onaylandı!' : 'Mission approved!'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset(
+                'assets/images/esma.png',
+                height: 130,
+                fit: BoxFit.contain,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _isTr
+                    ? 'Tebrikler $nickname! Fotoğrafın onaylandı ve '
+                          'başarın kaydedildi. Şimdi görev yerini haritada işaretleyebilirsin.'
+                    : 'Well done, $nickname! Your photo was approved and '
+                          'your achievement was saved. You can now mark your mission on the map.',
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+          actions: [
+            FilledButton.icon(
+              icon: const Icon(Icons.map_outlined),
+              label: Text(_isTr ? 'Haritaya geç' : 'Open map'),
+              onPressed: () => Navigator.of(dialogContext).pop(),
+            ),
+          ],
         ),
       ),
     );
+
+    if (!mounted) return;
+
+    // StoryScreen'i silme; haritayı onun üzerine aç.
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (mapContext) => CleanedSpotsMapScreen(
+          initialLat: _userPosition?.latitude ?? source.latitude,
+          initialLng: _userPosition?.longitude ?? source.longitude,
+          pendingSource: WaterSource(
+            id: source.id,
+            name: source.name,
+            latitude: _userPosition?.latitude ?? source.latitude,
+            longitude: _userPosition?.longitude ?? source.longitude,
+          ),
+          onBack: () => Navigator.of(mapContext).pop(),
+        ),
+      ),
+    );
+
+    if (mounted) widget.onComplete();
   }
 
   void _showErrorDialog(String reason) {
@@ -516,14 +496,7 @@ class _FinalMissionScreenState extends State<FinalMissionScreen> {
         backgroundColor: softBeige,
         elevation: 0,
         centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: primaryGreen,
-            size: 18,
-          ),
-          onPressed: () => Navigator.pop(context),
-        ),
+        automaticallyImplyLeading: false,
         title: Text(
           _isTr ? 'Gerçek Dünya Görevi' : 'Real-World Mission',
           style: const TextStyle(

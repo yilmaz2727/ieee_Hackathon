@@ -63,7 +63,7 @@ class StoryController extends ChangeNotifier {
   int catches = 0;
 
   int get chapterOneScore => firstCollected * 10;
-  int get chapterTwoScore => max(0, (avoided * 1) - (swallowed * 5));
+  int get chapterTwoScore => avoided - (swallowed * 5);
   int get chapterFourScore => preventionCorrect * 20;
   int get liveTotalScore =>
       chapterOneScore + chapterTwoScore + chapterFourScore;
@@ -398,9 +398,8 @@ class StoryController extends ChangeNotifier {
 
   void resumeChapter(int checkpoint) {
     // Menü müziği kesin olarak durur. CH1 kayıtlarında (1, 5, 6) hikâye
-    // müziği başlar; playBGM önce çalanı durdurur. CH2 hikâye (2) ve balık
-    // iyileştirme (7) ekranları müziğini kendisi başlatır; CH3 ve final
-    // şimdilik sessiz.
+    // müziği başlar; playBGM önce çalanı durdurur. CH2, CH3 ve final şimdilik
+    // bilinçli olarak sessiz.
     // 2 = CH2, 3 = CH3, 4 = final; aşağıdaki else dalı da CH1 girişine gider.
     final resumesChapterOne =
         checkpoint < 2 || checkpoint == 5 || checkpoint == 6;
@@ -540,7 +539,7 @@ class StoryController extends ChangeNotifier {
   // -------------------------------------------------
 
   void answerPrevention(int selected, int correctAnswer) {
-    if (scene != Scene.prevention || preventionAnswered) {
+    if (scene != Scene.prevention || paused || preventionAnswered) {
       return;
     }
 
@@ -559,10 +558,9 @@ class StoryController extends ChangeNotifier {
   }
 
   void nextPreventionScenario() {
-    if (scene != Scene.prevention || !preventionAnswered) {
+    if (scene != Scene.prevention || paused || !preventionAnswered) {
       return;
     }
-
     // 0, 1, 2, 3, 4 = toplam 5 senaryo
     if (preventionStep >= 4) {
       replaying = true;
@@ -796,8 +794,6 @@ class StoryController extends ChangeNotifier {
         // Balığa çarptı -> yutuldu
         if (w.y >= .72 && w.y <= .82 && (w.x - fishX).abs() < .095) {
           swallowed++;
-          // Oyun durmaz; efekt ayrı oyuncuda çalar.
-          AudioManager.instance.playEffect('mikroplastik_yutma.mp3');
 
           removed.add(w.id);
         }
@@ -814,11 +810,6 @@ class StoryController extends ChangeNotifier {
       waste.removeWhere((w) => removed.contains(w.id));
 
       if (elapsed >= protectionSeconds) {
-        // Oyun müziği durur, kitap sesi çalar, ardından menü müziği gelir.
-        AudioManager.instance.playJingleThenBGM(
-          'dedenin_kitabi_click.mp3',
-          'ana_menu_bg.mp3',
-        );
         go(Scene.protectionResult);
         SharedPreferences.getInstance().then((prefs) {
           prefs.setInt('healing_score', chapterTwoScore);

@@ -17,7 +17,7 @@ class ChapterOne extends StatefulWidget {
   State<ChapterOne> createState() => _ChapterOneState();
 }
 
-class _ChapterOneState extends State<ChapterOne> {
+class _ChapterOneState extends State<ChapterOne> with WidgetsBindingObserver {
   final clock = Stopwatch();
   final random = Random();
   final items = <Waste>[];
@@ -32,6 +32,36 @@ class _ChapterOneState extends State<ChapterOne> {
 
   double get seconds => clock.elapsedMilliseconds / 1000;
   int get remaining => max(0, (20 - seconds).ceil());
+  bool _backgroundPaused = false;
+
+  bool get _isPaused => widget.story.paused || _backgroundPaused;
+
+  void _syncPause() {
+    if (finished || _isPaused) {
+      clock.stop();
+    } else {
+      clock.start();
+    }
+
+    previousTime = seconds;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _backgroundPaused = state != AppLifecycleState.resumed;
+    _syncPause();
+  }
+
+  @override
+  void didUpdateWidget(covariant ChapterOne oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.story != widget.story) {
+      oldWidget.story.removeListener(_syncPause);
+      widget.story.addListener(_syncPause);
+      _syncPause();
+    }
+  }
 
   @override
   void initState() {
@@ -49,7 +79,10 @@ class _ChapterOneState extends State<ChapterOne> {
       spawn(initial: true);
     }
 
-    clock.start();
+    WidgetsBinding.instance.addObserver(this);
+    widget.story.addListener(_syncPause);
+
+    _syncPause();
 
     timer = Timer.periodic(const Duration(milliseconds: 33), (_) => update());
   }
@@ -67,7 +100,7 @@ class _ChapterOneState extends State<ChapterOne> {
   }
 
   void update() {
-    if (!mounted || finished) return;
+    if (!mounted || finished || _isPaused) return;
 
     if (seconds >= 20) {
       finish();
@@ -109,7 +142,7 @@ class _ChapterOneState extends State<ChapterOne> {
   }
 
   void drop(int id, int bin) {
-    if (!mounted || finished) return;
+    if (!mounted || finished || _isPaused) return;
 
     // Süre dolduktan sonraki bırakmalar puan kazandırmaz.
     if (seconds >= 20) {
@@ -162,7 +195,10 @@ class _ChapterOneState extends State<ChapterOne> {
   }
 
   @override
+  @override
   void dispose() {
+    widget.story.removeListener(_syncPause);
+    WidgetsBinding.instance.removeObserver(this);
     timer.cancel();
     clock.stop();
     super.dispose();
@@ -214,7 +250,7 @@ class _ChapterOneState extends State<ChapterOne> {
                 top: 62 + item.y * areaHeight,
                 child: Draggable<int>(
                   data: item.id,
-                  maxSimultaneousDrags: 1,
+                  maxSimultaneousDrags: _isPaused ? 0 : 1,
                   onDragStarted: () => AudioManager.instance.playEffect(
                     'ch1_nesne_tutma_effect.mp3',
                   ),
@@ -257,7 +293,8 @@ class _ChapterOneState extends State<ChapterOne> {
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 3),
                             child: DragTarget<int>(
-                              onWillAcceptWithDetails: (_) => !finished,
+                              onWillAcceptWithDetails: (_) =>
+                                  !finished && !_isPaused,
                               onAcceptWithDetails: (details) {
                                 drop(details.data, bin);
                               },

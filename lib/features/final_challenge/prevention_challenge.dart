@@ -9,48 +9,169 @@ class PreventionChallenge extends StatelessWidget {
 
   final StoryController story;
 
-  List<Map<String, Object>> get scenarios => [
-    {
-      'icon': Icons.local_drink_outlined,
-      'title': tr('prevention.1.title'),
-      'question': tr('prevention.1.question'),
-      'options': [tr('prevention.1.option1'), tr('prevention.1.option2')],
-      'correct': 1,
-      'success': tr('prevention.1.success'),
-    },
-    {
-      'icon': Icons.fastfood_outlined,
-      'title': tr('prevention.2.title'),
-      'question': tr('prevention.2.question'),
-      'options': [tr('prevention.2.option1'), tr('prevention.2.option2')],
-      'correct': 1,
-      'success': tr('prevention.2.success'),
-    },
-    {
-      'icon': Icons.air_rounded,
-      'title': tr('prevention.3.title'),
-      'question': tr('prevention.3.question'),
-      'options': [tr('prevention.3.option1'), tr('prevention.3.option2')],
-      'correct': 0,
-      'success': tr('prevention.3.success'),
-    },
-    {
-      'icon': Icons.delete_outline_rounded,
-      'title': tr('prevention.4.title'),
-      'question': tr('prevention.4.question'),
-      'options': [tr('prevention.4.option1'), tr('prevention.4.option2')],
-      'correct': 0,
-      'success': tr('prevention.4.success'),
-    },
-    {
-      'icon': Icons.backpack_outlined,
-      'title': tr('prevention.5.title'),
-      'question': tr('prevention.5.question'),
-      'options': [tr('prevention.5.option1'), tr('prevention.5.option2')],
-      'correct': 0,
-      'success': tr('prevention.5.success'),
-    },
-  ];
+  List<Map<String, Object>> get scenarios {
+    final isTr = AppLocalizations.instance.isTurkish;
+
+    String t(String trText, String enText) => isTr ? trText : enText;
+
+    return [
+      {
+        'icon': Icons.recycling_rounded,
+        'title': t('Şamlar’daki temizlik', 'Cleaning up at Şamlar'),
+        'question': t(
+          'Esma kıyıda bir plastik pipet, metal içecek kutusu ve temiz kâğıt buldu. '
+              'Bunları nasıl ayırmalı?',
+          'Esma found a plastic straw, a metal drink can and clean paper on the '
+              'shore. How should she sort them?',
+        ),
+        'options': <String>[
+          t(
+            'Hepsini kâğıt kutusuna atmalı.',
+            'Put everything in the paper bin.',
+          ),
+          t(
+            'Plastiği plastik, metali metal, kâğıdı kâğıt kutusuna atmalı.',
+            'Put plastic, metal and paper in their matching bins.',
+          ),
+          t(
+            'Küçük parçaları kıyıda bırakmalı.',
+            'Leave the small pieces on the shore.',
+          ),
+        ],
+        'correct': 1,
+        'success': t(
+          'Doğru! Oyunda yaptığın gibi atıkları türüne göre ayırmak, '
+              'geri dönüşüme uygun atıkların işlenmesine yardımcı olur.',
+          'Correct! Sorting waste by material helps suitable items '
+              'enter the recycling process.',
+        ),
+      },
+      {
+        'icon': Icons.water_drop_outlined,
+        'title': t('Pipet gerçekten kayboldu mu?', 'Did the straw disappear?'),
+        'question': t(
+          'Esma’nın pipeti suda küçük parçalara ayrıldı. '
+              'Bu, plastiğin artık zararsız olduğu anlamına gelir mi?',
+          'Esma’s straw broke into tiny pieces in the water. '
+              'Does that mean the plastic is now harmless?',
+        ),
+        'options': <String>[
+          t(
+            'Evet, gözle görülmeyen plastik artık yoktur.',
+            'Yes, plastic no longer exists once we cannot see it.',
+          ),
+          t(
+            'Evet, küçük parçalar balıklar için besindir.',
+            'Yes, small pieces are food for fish.',
+          ),
+          t(
+            'Hayır, küçük plastik parçaları suda kalabilir ve canlılar tarafından yutulabilir.',
+            'No, small plastic pieces can remain in the water and be swallowed by wildlife.',
+          ),
+        ],
+        'correct': 2,
+        'success': t(
+          'Doğru! Parçalanmak, yok olmak değildir. Mikroplastikler '
+              'canlılar tarafından yanlışlıkla yutulabilir.',
+          'Correct! Breaking apart does not mean disappearing. '
+              'Wildlife can accidentally swallow microplastics.',
+        ),
+      },
+      {
+        'icon': Icons.pets_outlined,
+        'title': t('Sazlıdere’deki balık', 'The fish at Sazlıdere'),
+        'question': t(
+          'Sazlıdere’de balığı plastiklerden uzak tuttuk. '
+              'Gerçek hayatta bu sorunu en baştan azaltmak için ne yapabiliriz?',
+          'At Sazlıdere, we kept the fish away from plastic. '
+              'What can we do in real life to reduce the problem at its source?',
+        ),
+        'options': <String>[
+          t(
+            'Tek kullanımlık plastiği azaltıp atıkların suya ulaşmasını önleyebiliriz.',
+            'Reduce single-use plastic and prevent waste from reaching water.',
+          ),
+          t(
+            'Plastikleri balıkların olmadığı başka bir kıyıya taşıyabiliriz.',
+            'Move plastic to another shore where there are no fish.',
+          ),
+          t(
+            'Plastikleri daha küçük parçalara ayırabiliriz.',
+            'Break plastic into smaller pieces.',
+          ),
+        ],
+        'correct': 0,
+        'success': t(
+          'Doğru! Balıkları korumanın önemli bir yolu, '
+              'plastiğin suya hiç ulaşmamasını sağlamaktır.',
+          'Correct! An important way to protect fish is to prevent '
+              'plastic from entering the water in the first place.',
+        ),
+      },
+      {
+        'icon': Icons.search_rounded,
+        'title': t('Küçükçekmece’deki keşif', 'The discovery at Küçükçekmece'),
+        'question': t(
+          'Esma, balığın içini incelediğinde küçük plastik parçaları gördü. '
+              'Bu keşif bize ne anlatıyor?',
+          'When Esma examined the fish, she saw small plastic pieces inside it. '
+              'What does this discovery tell us?',
+        ),
+        'options': <String>[
+          t(
+            'Suyun yüzeyi temiz görünüyorsa içinde plastik olamaz.',
+            'If the water surface looks clean, there cannot be plastic in it.',
+          ),
+          t(
+            'Kirliliğin bir kısmı dışarıdan görünmese de canlıları etkileyebilir.',
+            'Pollution can affect wildlife even when some of it is not visible.',
+          ),
+          t(
+            'Plastik yalnızca kıyıdaki taşları etkiler.',
+            'Plastic only affects rocks on the shore.',
+          ),
+        ],
+        'correct': 1,
+        'success': t(
+          'Doğru! Yalnızca suyun görünüşüne bakarak bütün kirliliği anlayamayız. '
+              'Görünmeyen küçük parçalar da önemlidir.',
+          'Correct! The appearance of water does not reveal all pollution. '
+              'Tiny pieces that are hard to see matter too.',
+        ),
+      },
+      {
+        'icon': Icons.volunteer_activism_outlined,
+        'title': t('Esma’nın yeni alışkanlığı', 'Esma’s new habit'),
+        'question': t(
+          'Esma bir sonraki pikniğe hazırlanıyor. '
+              'Pipetin yolculuğunun yeniden yaşanmaması için hangisini seçmeli?',
+          'Esma is preparing for another picnic. '
+              'Which choice can help prevent the straw’s journey from happening again?',
+        ),
+        'options': <String>[
+          t(
+            'Tekrar kullanılabilir matarayı almalı ve atıklarını ayrıştırmak için yanında götürmeli.',
+            'Bring a reusable bottle and take her waste away for proper sorting.',
+          ),
+          t(
+            'Atıklarını göl kenarındaki taşların altına saklamalı.',
+            'Hide her waste under rocks beside the lake.',
+          ),
+          t(
+            'Hafif çöpleri rüzgârın götürmesini beklemeli.',
+            'Wait for the wind to carry away light rubbish.',
+          ),
+        ],
+        'correct': 0,
+        'success': t(
+          'Doğru! Hikâyeyi değiştiren şey günlük seçimlerimizdir: '
+              'daha az tek kullanımlık ürün, doğru ayrıştırma ve doğada atık bırakmamak.',
+          'Correct! Everyday choices can change the story: fewer single-use '
+              'items, proper sorting and leaving no rubbish in nature.',
+        ),
+      },
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -204,9 +325,8 @@ class PreventionChallenge extends StatelessWidget {
                         child: Text(
                           story.preventionSelected == correct
                               ? scenario['success'] as String
-                              : tr('prevention.wrongAnswer', {
-                                  'answer': options[correct],
-                                }),
+                              : '${tr('prevention.wrongAnswer', {'answer': options[correct]})}'
+                                    '\n\n${scenario['success']}',
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             color: ink,

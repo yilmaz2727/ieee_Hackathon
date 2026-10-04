@@ -1,284 +1,249 @@
-import 'package:flutter/material.dart';
-import 'dart:math';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
-import '../../../../localization/app_localizations.dart';
+import 'dart:math';
+import 'dart:ui' as ui;
 
-enum PieceID { t1, t2, r1, r2, b1, b2, l1, l2 }
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-class PieceClipper extends CustomClipper<Path> {
-  final PieceID piece;
-  PieceClipper(this.piece);
-
-  @override
-  Path getClip(Size size) {
-    Path path = Path();
-    final w = size.width;
-    final h = size.height;
-    final cx = w / 2;
-    final cy = h / 2;
-
-    switch (piece) {
-      case PieceID.t1:
-        path.moveTo(0, 0); path.lineTo(cx, 0); path.lineTo(cx, cy); path.close(); break;
-      case PieceID.t2:
-        path.moveTo(cx, 0); path.lineTo(w, 0); path.lineTo(cx, cy); path.close(); break;
-      case PieceID.r1:
-        path.moveTo(w, 0); path.lineTo(w, cy); path.lineTo(cx, cy); path.close(); break;
-      case PieceID.r2:
-        path.moveTo(w, cy); path.lineTo(w, h); path.lineTo(cx, cy); path.close(); break;
-      case PieceID.b1:
-        path.moveTo(w, h); path.lineTo(cx, h); path.lineTo(cx, cy); path.close(); break;
-      case PieceID.b2:
-        path.moveTo(cx, h); path.lineTo(0, h); path.lineTo(cx, cy); path.close(); break;
-      case PieceID.l1:
-        path.moveTo(0, h); path.lineTo(0, cy); path.lineTo(cx, cy); path.close(); break;
-      case PieceID.l2:
-        path.moveTo(0, cy); path.lineTo(0, 0); path.lineTo(cx, cy); path.close(); break;
-    }
-    return path;
-  }
-  @override
-  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
-}
+import '../../game/story_controller.dart';
+import '../../localization/app_localizations.dart';
+import '../../ui/widgets.dart';
 
 class FishPuzzleScreen extends StatefulWidget {
+  const FishPuzzleScreen({
+    super.key,
+    required this.story,
+    this.onFinish,
+  });
+
+  final StoryController story;
   final VoidCallback? onFinish;
-  const FishPuzzleScreen({super.key, this.onFinish});
 
   @override
   State<FishPuzzleScreen> createState() => _FishPuzzleScreenState();
 }
 
-class _FishPuzzleScreenState extends State<FishPuzzleScreen> {
-  static const double puzzleSize = 270.0;
-  List<PieceID> piecesInTray = PieceID.values.toList()..shuffle();
-  Set<PieceID> placedPieces = {};
-  
-  int _secondsPassed = 0;
-  Timer? _timer;
-  bool _isSuccess = false;
+class _FishPuzzleScreenState extends State<FishPuzzleScreen>
+    with WidgetsBindingObserver {
+  static const _asset = 'assets/images/kucukcekmece.png';
 
-  bool get _isTr => AppLocalizations.instance.isTurkish;
+  final _clock = Stopwatch();
+  final _placed = <int>{};
+  final _order = List<int>.generate(9, (i) => i)..shuffle();
+
+  ui.Image? _image;
+  Timer? _timer;
+
+  bool _background = false;
+  bool _finished = false;
+  bool _saving = false;
+  bool _saved = false;
+  bool _loadFailed = false;
+
+  int _score = 0;
+
+  bool get _tr => AppLocalizations.instance.isTurkish;
+
+  bool get _paused => widget.story.paused || _background;
 
   @override
   void initState() {
     super.initState();
-    _startTimer();
-  }
 
-  void _startTimer() {
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted && !_isSuccess) {
-        setState(() {
-          _secondsPassed++;
-        });
+    WidgetsBinding.instance.addObserver(this);
+    widget.story.addListener(_syncClock);
+
+    _loadImage();
+
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && !_paused && !_finished && _image != null) {
+        setState(() {});
       }
     });
   }
 
-  void _checkWin() async {
-    if (placedPieces.length == piecesInTray.length) {
-      _timer?.cancel();
-      setState(() {
-        _isSuccess = true;
-      });
+  Future<void> _loadImage() async {
+    if (mounted) setState(() => _loadFailed = false);
 
-      int puzzleScore = max(10, 100 - _secondsPassed);
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('puzzle_score', puzzleScore);
+    try {
+      final data = await rootBundle.load(_asset);
+      final codec = await ui.instantiateImageCodec(
+        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+      );
 
-      Future.delayed(const Duration(milliseconds: 650), () {
-        if (mounted) {
-          _showKamuSpotuDialog(puzzleScore);
-        }
-      });
+      late final ui.FrameInfo frame;
+
+      try {
+        frame = await codec.getNextFrame();
+      } finally {
+        codec.dispose();
+      }
+
+      if (!mounted) {
+        frame.image.dispose();
+        return;
+      }
+
+      setState(() => _image = frame.image);
+      _syncClock();
+    } catch (_) {
+      if (mounted) setState(() => _loadFailed = true);
     }
   }
 
-  void _showKamuSpotuDialog(int score) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFFF9F7EE),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: [
-              const Icon(Icons.info_outline, color: Colors.blueAccent),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  _isTr ? 'Balıkları Koruyalım!' : 'Protect the Fish!',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF2C5E43)),
-                ),
-              ),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: Image.asset(
-                    'assets/images/fish.png',
-                    height: 150,
-                    width: double.infinity,
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) => Container(
-                      height: 150,
-                      color: Colors.blue.withValues(alpha: 0.2),
-                      child: const Icon(Icons.sailing, size: 64, color: Colors.blueAccent),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  _isTr 
-                    ? 'Tebrikler! Bulmacayı tamamlayıp tatlı suda yaşayan balığımızı kurtardın.\n\nFakat ne yazık ki doğada işler bu kadar kolay değil. Nehir ve göllere atılan plastik atıklar zamanla parçalanarak "Mikroplastik" adını verdiğimiz küçük zehirli yapılara dönüşür.\n\nTemiz sulara duyarlı balıklar beslenirken yanlışlıkla bu mikroplastikleri yutar. Bu durum onların hastalanmasına, sistemlerinin tıkanmasına ve yaşam alanlarının tamamen yok olmasına sebep olur. Onları kurtarmak bizim elimizde! Bütün tatlı suları korumalı ve etrafı asla kirletmemeliyiz.'
-                    : 'Congratulations! You completed the puzzle and saved our freshwater fish.\n\nBut unfortunately, things in nature aren\'t this easy. Plastic waste discarded into rivers and lakes slowly breaks down into toxic tiny pieces called "Microplastics".\n\nSensitive fish accidentally swallow these microplastics while feeding. This causes severe illness, blocks their digestive systems, and completely destroys their habitats. It\'s up to us to save them! We must protect our freshwaters and never throw plastics into nature.',
-                  style: const TextStyle(fontSize: 14, color: Colors.black87, height: 1.4),
-                  textAlign: TextAlign.justify,
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.amber.shade300),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.star_rounded, color: Colors.amber, size: 28),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          _isTr ? 'Bulmaca Skoru: $score Puan ($_secondsPassed saniye)' : 'Puzzle Score: $score Points ($_secondsPassed seconds)',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+  void _syncClock() {
+    if (_paused || _finished || _image == null) {
+      _clock.stop();
+    } else {
+      _clock.start();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _background = state != AppLifecycleState.resumed;
+    _syncClock();
+  }
+
+  void _place(int index) {
+    if (_paused || _finished || _placed.contains(index)) return;
+
+    setState(() => _placed.add(index));
+
+    if (_placed.length == 9) {
+      _clock.stop();
+      _score = max(20, 100 - _clock.elapsed.inSeconds);
+      _finished = true;
+      _saveResult();
+    }
+  }
+
+  Future<void> _saveResult() async {
+    if (_saving || _saved) return;
+
+    setState(() => _saving = true);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final success = await prefs.setInt('puzzle_score', _score);
+
+      if (!success) throw StateError('Puzzle score could not be saved.');
+
+      if (mounted) setState(() => _saved = true);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _tr
+                  ? 'Puan kaydedilemedi. Kaydetmeyi tekrar dene.'
+                  : 'Could not save your score. Please retry.',
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context); // close dialog
-                if (widget.onFinish != null) {
-                  widget.onFinish!(); // Go back to the game's flow natively!
-                }
-              },
-              child: Text(
-                _isTr ? 'Görevi Tamamla 🌊' : 'Complete Mission 🌊',
-                style: const TextStyle(color: Color(0xFF2C5E43), fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-            ),
-          ],
         );
-      },
-    );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
   void dispose() {
+    widget.story.removeListener(_syncClock);
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
+    _clock.stop();
+    _image?.dispose();
     super.dispose();
   }
 
-  Widget buildImageSlice(PieceID piece) {
-    return Image.asset(
-      'assets/images/fish.png',
-      width: puzzleSize,
-      height: puzzleSize,
-      fit: BoxFit.cover,
-      errorBuilder: (context, e, s) => Container(
-        color: Colors.orangeAccent.withValues(alpha: 0.5),
-        alignment: Alignment.center,
-        child: const Icon(Icons.broken_image, color: Colors.white, size: 40),
+  Widget _piece(int index, double cell) {
+    return SizedBox(
+      width: cell * 1.5,
+      height: cell * 1.5,
+      child: CustomPaint(
+        painter: _PiecePainter(
+          image: _image!,
+          index: index,
+          cell: cell,
+        ),
       ),
     );
   }
 
-  Widget buildTarget(PieceID piece) {
-    bool isPlaced = placedPieces.contains(piece);
-    return DragTarget<PieceID>(
-      onWillAcceptWithDetails: (details) => details.data == piece,
-      onAcceptWithDetails: (details) {
-        if (!context.mounted) return;
-        setState(() {
-          placedPieces.add(piece);
-        });
-        _checkWin();
-      },
-      builder: (context, candidateData, rejectedData) {
-        return ClipPath(
-          clipper: PieceClipper(piece),
-          child: Container(
-            width: puzzleSize,
-            height: puzzleSize,
-            color: isPlaced 
-              ? Colors.transparent 
-              : (candidateData.isNotEmpty ? Colors.green.withValues(alpha: 0.4) : Colors.black.withValues(alpha: 0.05)),
-            child: isPlaced ? buildImageSlice(piece) : null,
-          ),
-        );
-      },
-    );
-  }
-
-  Widget buildDraggable(PieceID piece) {
-    bool isPlaced = placedPieces.contains(piece);
-    final slice = ClipPath(
-      clipper: PieceClipper(piece),
-      child: SizedBox(
-        width: puzzleSize,
-        height: puzzleSize,
-        child: buildImageSlice(piece),
-      ),
-    );
-    
-    return Visibility(
-      visible: !isPlaced,
-      maintainState: true,
-      maintainAnimation: true,
-      maintainSize: true,
-      child: Draggable<PieceID>(
-        data: piece,
-        feedback: Transform.scale(
-          scale: 1.05,
-          child: Opacity(
-            opacity: 0.8,
-            child: slice,
-          ),
-        ),
-        childWhenDragging: Opacity(
-          opacity: 0.0,
-          child: const SizedBox(
-            width: 70,
-            height: 70,
-          ),
-        ),
-        child: Container(
-          width: 76,
-          height: 76,
-          margin: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, spreadRadius: 0)],
-          ),
-          child: FittedBox(
-            fit: BoxFit.contain,
-            child: SizedBox(
-              width: puzzleSize + 20,
-              height: puzzleSize + 20,
-              child: Center(child: slice),
+  Widget _result() {
+    return Positioned.fill(
+      child: ColoredBox(
+        color: Colors.black45,
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 390),
+              child: Paper(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Image.asset(
+                      'assets/images/esma.png',
+                      height: 145,
+                      fit: BoxFit.contain,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      _tr ? 'Göl yeniden bir bütün!' : 'The lake is whole again!',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontFamily: 'StorySerif',
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: ink,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      _tr
+                          ? '“Parçaları birleştirince Küçükçekmece Gölü’nü '
+                              'yeniden gördük. Doğada da su, balıklar ve insanlar '
+                              'birbirine bağlı. Plastik küçülse bile yok olmaz; '
+                              'suya ulaşmadan atıkları doğru kutuya atalım!”'
+                          : '“Putting the pieces together revealed Küçükçekmece '
+                              'Lake. Water, fish and people are connected too. '
+                              'Plastic does not disappear when it breaks into '
+                              'smaller pieces. Let’s sort waste before it reaches water!”',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(height: 1.6, color: ink),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      _tr
+                          ? '9/9 parça • ${_clock.elapsed.inSeconds} saniye\n'
+                              'Puzzle puanı: $_score'
+                          : '9/9 pieces • ${_clock.elapsed.inSeconds} seconds\n'
+                              'Puzzle score: $_score',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: ink,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    StoryButton(
+                      _saved
+                          ? (_tr ? 'Hikâyeye devam et' : 'Continue the story')
+                          : (_tr ? 'Puanı kaydet' : 'Save score'),
+                      loading: _saving,
+                      onPressed: _saving
+                          ? null
+                          : _saved
+                              ? widget.onFinish
+                              : _saveResult,
+                      icon: Icons.arrow_forward_rounded,
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -288,132 +253,317 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F6F0),
-      appBar: AppBar(
-        title: Text(
-          _isTr ? 'Balığı Birleştir!' : 'Assemble the Fish!',
-          style: const TextStyle(color: Color(0xFF2C5E43), fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.white,
-        centerTitle: true,
-        elevation: 0,
-      ),
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.start,
-              children: [
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Text(
-                    _isTr 
-                        ? 'Geometrik parçaları sürükleyerek balığı tamamla. Ne kadar hızlı yaparsan o kadar çok puan kazanırsın!'
-                        : 'Drag the scattered geometric pieces to assemble the fish. Faster times earn higher scores!',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 15, color: Colors.black87),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  _isTr ? 'Süre: $_secondsPassed saniye' : 'Time: $_secondsPassed seconds',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Colors.black54),
-                ),
-                const SizedBox(height: 10),
-                
-                // Puzzle Drop Zone (The Stack)
-                Container(
-                  width: puzzleSize,
-                  height: puzzleSize,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade300, width: 2, style: BorderStyle.solid),
-                    boxShadow: const [
-                      BoxShadow(color: Colors.black12, blurRadius: 15, spreadRadius: 3),
-                    ],
-                  ),
-                  child: Stack(
-                    children: [
-                      // Subtly show puzzle boundary
-                      buildTarget(PieceID.t1),
-                      buildTarget(PieceID.t2),
-                      buildTarget(PieceID.r1),
-                      buildTarget(PieceID.r2),
-                      buildTarget(PieceID.b1),
-                      buildTarget(PieceID.b2),
-                      buildTarget(PieceID.l1),
-                      buildTarget(PieceID.l2),
-                      
-                      // Show grid lines for clarity of the geometric cut
-                      IgnorePointer(
-                        child: CustomPaint(
-                          size: const Size(puzzleSize, puzzleSize),
-                          painter: GridDividerPainter(),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                
-                const SizedBox(height: 16),
-                
-                // Trays full of pieces (Wrapped in Expanded & ScrollView to prevent overflow!)
-                Expanded(
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-                      boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 12, spreadRadius: -2)],
-                    ),
-                    child: SingleChildScrollView(
-                      child: Wrap(
-                        alignment: WrapAlignment.center,
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: piecesInTray.map((p) => buildDraggable(p)).toList(),
-                      ),
-                    ),
-                  ),
-                ),
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        widget.story,
+        AppLocalizations.instance,
+      ]),
+      builder: (context, _) {
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final boardSize = min(330.0, constraints.maxWidth - 40);
+            final cell = boardSize / 3;
+            final pad = cell * .25;
 
-                if (_isSuccess)
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 20),
-                    child: Text('✅', style: TextStyle(fontSize: 48)),
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.asset(_asset, fit: BoxFit.cover),
+                const ColoredBox(color: Color(0x66234331)),
+                if (_loadFailed)
+                  Center(
+                    child: FilledButton(
+                      onPressed: _loadImage,
+                      child: Text(
+                        _tr ? 'Görseli tekrar yükle' : 'Reload image',
+                      ),
+                    ),
+                  )
+                else if (_image == null)
+                  const Center(child: CircularProgressIndicator())
+                else
+                  IgnorePointer(
+                    ignoring: _paused || _finished,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+                      child: Column(
+                        children: [
+                          Paper(
+                            padding: const EdgeInsets.all(14),
+                            child: Column(
+                              children: [
+                                Text(
+                                  _tr
+                                      ? 'Gölün parçalarını birleştir'
+                                      : 'Piece the lake together',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    fontFamily: 'StorySerif',
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    color: ink,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _tr
+                                      ? 'Parçaları aşağıdan alıp uygun boşluğa bırak.'
+                                      : 'Drag each piece into its matching space.',
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  '${_placed.length}/9  •  '
+                                  '${_clock.elapsed.inSeconds} ${_tr ? 'sn' : 's'}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: cream,
+                              border: Border.all(color: cream, width: 4),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black26,
+                                  blurRadius: 12,
+                                ),
+                              ],
+                            ),
+                            child: SizedBox(
+                              width: boardSize,
+                              height: boardSize,
+                              child: Stack(
+                                clipBehavior: Clip.hardEdge,
+                                children: [
+                                  Positioned.fill(
+                                    child: Opacity(
+                                      opacity: .2,
+                                      child: Image.asset(
+                                        _asset,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                  ),
+                                  for (final index in _placed)
+                                    Positioned(
+                                      left: (index % 3) * cell - pad,
+                                      top: (index ~/ 3) * cell - pad,
+                                      child: IgnorePointer(
+                                        child: _piece(index, cell),
+                                      ),
+                                    ),
+                                  for (var index = 0; index < 9; index++)
+                                    Positioned(
+                                      left: (index % 3) * cell,
+                                      top: (index ~/ 3) * cell,
+                                      width: cell,
+                                      height: cell,
+                                      child: DragTarget<int>(
+                                        onWillAcceptWithDetails: (details) =>
+                                            !_paused &&
+                                            !_finished &&
+                                            !_placed.contains(index) &&
+                                            details.data == index,
+                                        onAcceptWithDetails: (details) =>
+                                            _place(details.data),
+                                        builder: (context, candidates, rejected) {
+                                          return Container(
+                                            decoration: BoxDecoration(
+                                              color: candidates.isNotEmpty
+                                                  ? Colors.green.withValues(
+                                                      alpha: .18,
+                                                    )
+                                                  : Colors.transparent,
+                                              border: _placed.contains(index)
+                                                  ? null
+                                                  : Border.all(
+                                                      color: ink.withValues(
+                                                        alpha: .15,
+                                                      ),
+                                                    ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: cream.withValues(alpha: .95),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Wrap(
+                              alignment: WrapAlignment.center,
+                              spacing: 4,
+                              runSpacing: 4,
+                              children: [
+                                for (final index in _order)
+                                  if (!_placed.contains(index))
+                                    Draggable<int>(
+                                      data: index,
+                                      maxSimultaneousDrags: _paused ? 0 : 1,
+                                      rootOverlay: true,
+                                      // Tahta ve eldeki parça aynı boyutta;
+                                      // tutulduğu nokta sürükleme boyunca korunur.
+                                      feedback: Material(
+                                        color: Colors.transparent,
+                                        child: _piece(index, cell),
+                                      ),
+                                      childWhenDragging: SizedBox(
+                                        width: cell * 1.5,
+                                        height: cell * 1.5,
+                                      ),
+                                      child: _piece(index, cell),
+                                    ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
+                if (_finished) _result(),
               ],
-            ),
-          ),
-        ),
-      ),
+            );
+          },
+        );
+      },
     );
   }
 }
 
-class GridDividerPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (size.width == 0) return;
-    Paint paint = Paint()
-      ..color = Colors.grey.withValues(alpha: 0.3)
-      ..strokeWidth = 2.0
-      ..style = PaintingStyle.stroke;
-      
-    // Draw the X that slices the picture into 4 triangles
-    canvas.drawLine(const Offset(0, 0), Offset(size.width, size.height), paint);
-    canvas.drawLine(Offset(size.width, 0), Offset(0, size.height), paint);
-    
-    // Draw the + that slices the remaining triangles making it exactly 8 distinct slices
-    canvas.drawLine(Offset(size.width/2, 0), Offset(size.width/2, size.height), paint);
-    canvas.drawLine(Offset(0, size.height/2), Offset(size.width, size.height/2), paint);
+class _PiecePainter extends CustomPainter {
+  const _PiecePainter({
+    required this.image,
+    required this.index,
+    required this.cell,
+  });
+
+  final ui.Image image;
+  final int index;
+  final double cell;
+
+  Path _shape() {
+    final row = index ~/ 3;
+    final col = index % 3;
+    final pad = cell * .25;
+
+    double sign(int a, int b) => (a + b).isEven ? 1 : -1;
+
+    final top = row == 0 ? 0.0 : sign(row, col);
+    final right = col == 2 ? 0.0 : sign(row, col);
+    final bottom = row == 2 ? 0.0 : -sign(row + 1, col);
+    final left = col == 0 ? 0.0 : -sign(row, col - 1);
+
+    final path = Path()..moveTo(pad, pad);
+
+    void edge(Offset start, Offset end, Offset normal, double direction) {
+      final delta = end - start;
+
+      Offset p(double t, double depth) =>
+          start + delta * t + normal * (cell * depth * direction);
+
+      void line(Offset point) => path.lineTo(point.dx, point.dy);
+
+      void curve(Offset a, Offset b, Offset c) {
+        path.cubicTo(a.dx, a.dy, b.dx, b.dy, c.dx, c.dy);
+      }
+
+      if (direction == 0) {
+        line(end);
+        return;
+      }
+
+      line(p(.35, 0));
+
+      curve(
+        p(.44, 0),
+        p(.35, .08),
+        p(.36, .13),
+      );
+      curve(
+        p(.37, .25),
+        p(.63, .25),
+        p(.64, .13),
+      );
+      curve(
+        p(.65, .08),
+        p(.56, 0),
+        p(.65, 0),
+      );
+
+      line(end);
+    }
+
+    final a = Offset(pad, pad);
+    final b = Offset(pad + cell, pad);
+    final c = Offset(pad + cell, pad + cell);
+    final d = Offset(pad, pad + cell);
+
+    edge(a, b, const Offset(0, -1), top);
+    edge(b, c, const Offset(1, 0), right);
+    edge(c, d, const Offset(0, 1), bottom);
+    edge(d, a, const Offset(-1, 0), left);
+
+    return path..close();
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  void paint(Canvas canvas, Size size) {
+    final path = _shape();
+    final side = min(image.width, image.height).toDouble();
+    final pad = cell * .25;
+
+    final source = Rect.fromLTWH(
+      (image.width - side) / 2,
+      (image.height - side) / 2,
+      side,
+      side,
+    );
+
+    final destination = Rect.fromLTWH(
+      pad - (index % 3) * cell,
+      pad - (index ~/ 3) * cell,
+      cell * 3,
+      cell * 3,
+    );
+
+    canvas.drawShadow(path, Colors.black54, 3, true);
+
+    canvas.save();
+    canvas.clipPath(path);
+    canvas.drawImageRect(
+      image,
+      source,
+      destination,
+      Paint()..filterQuality = FilterQuality.high,
+    );
+    canvas.restore();
+
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = const Color(0xFFFFF4D6)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.8,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _PiecePainter oldDelegate) {
+    return image != oldDelegate.image ||
+        index != oldDelegate.index ||
+        cell != oldDelegate.cell;
+  }
 }
