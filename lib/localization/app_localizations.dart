@@ -13,7 +13,7 @@ class AppLocalizations extends ChangeNotifier {
   static const _preferenceKey = 'languageCode';
 
   Map<String, Map<String, String>> _catalogs = const {};
-  String _languageCode = 'tr';
+  String _languageCode = 'en';
 
   String get languageCode => _languageCode;
   bool get isTurkish => _languageCode == 'tr';
@@ -22,7 +22,7 @@ class AppLocalizations extends ChangeNotifier {
     await _ensureLoaded();
     SharedPreferences localPrefs = prefs ?? await SharedPreferences.getInstance();
     final saved = localPrefs.getString(_preferenceKey);
-    _languageCode = supportedLanguages.contains(saved) ? saved! : 'tr';
+    _languageCode = supportedLanguages.contains(saved) ? saved! : 'en';
   }
 
   Future<void> setLanguage(
