@@ -29,23 +29,27 @@ class _FinalMissionScreenState extends State<FinalMissionScreen> {
   final WaterSourceService _sourceService = WaterSourceService();
   final GeminiVisionService _geminiService = GeminiVisionService();
 
-  List<WaterSource> _closestSources = [];
-  Position? _userPosition;
-  bool _isLoading = true;
-  bool _isVerifying = false;
-  bool _isSkipping = false;
+Position? _userPosition;
+WaterSource? _verifiedSource;
+
+
+bool _isCheckingLocation = false;
+bool _isLocationVerified = false;
+bool _isVerifying = false;
+bool _isSkipping = false;
+
+String? _locationMessage;
+
   bool get _isTr => AppLocalizations.instance.isTurkish;
 
   static const Color primaryGreen = Color(0xFF2C5E43);
   static const Color accentGreen = Color(0xFF4A8B63);
   static const Color softBeige = Color(0xFFF9F7EE);
 
-  @override
-  void initState() {
-    super.initState();
-    _determinePositionAndLoadSources();
-  }
-
+@override
+void initState() {
+  super.initState();
+}
   Future<void> _continueWithoutPhoto() async {
     if (_isVerifying || _isSkipping) return;
 
@@ -124,80 +128,127 @@ class _FinalMissionScreenState extends State<FinalMissionScreen> {
       }
     }
   }
-
-  Future<void> _determinePositionAndLoadSources() async {
-    try {
-      LocationPermission permission = await Geolocator.checkPermission()
-          .timeout(const Duration(seconds: 3));
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission().timeout(
-          const Duration(seconds: 3),
-        );
-      }
-
-      Position? position = await Geolocator.getLastKnownPosition().timeout(
-        const Duration(seconds: 3),
-      );
-      position ??= await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.low,
-        ),
-      ).timeout(const Duration(seconds: 3));
-
-      var sources = await _sourceService
-          .getClosest3Sources(position)
-          .timeout(const Duration(seconds: 3));
-      if (mounted) {
-        setState(() {
-          _userPosition = position;
-          _closestSources = sources;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _closestSources = [
-            WaterSource(
-              id: 'dummy1',
-              name: 'Kent Park Göleti',
-              latitude: 39.9,
-              longitude: 32.8,
-            ),
-            WaterSource(
-              id: 'dummy2',
-              name: 'Yeşil Vadi',
-              latitude: 39.9,
-              longitude: 32.8,
-            ),
-            WaterSource(
-              id: 'dummy3',
-              name: 'Mavi Göl',
-              latitude: 39.9,
-              longitude: 32.8,
-            ),
-          ];
-          _isLoading = false;
-        });
-      }
-    }
+Future<void> _verifyCurrentLocation() async {
+  if (_isCheckingLocation || _isVerifying || _isSkipping) {
+    return;
   }
 
-  String _getLocalizedSourceName(String originalName) {
-    if (originalName.contains('Mavi Göl')) {
-      return _isTr ? 'Mavi Göl' : 'Mavi Göl (Blue Lake)';
-    }
-    if (originalName.contains('Kent Park')) {
-      return _isTr ? 'Kent Park Göleti' : 'Kent Park Lake';
-    }
-    if (originalName.contains('Yeşil Vadi')) {
-      return _isTr ? 'Yeşil Vadi' : 'Yesil Vadi (Green Valley)';
-    }
-    return originalName;
-  }
+  setState(() {
+    _isCheckingLocation = true;
+    _isLocationVerified = false;
+    _verifiedSource = null;
+    _locationMessage = _isTr
+        ? 'Anlık konumunuz alınıyor...'
+        : 'Getting your current location...';
+  });
 
+  try {
+    final position = await _sourceService.getCurrentPosition();
+
+    if (!mounted) return;
+
+    setState(() {
+      _userPosition = position;
+
+      _locationMessage = _isTr
+          ? 'Konum alındı. 100 metre çevrede su kaynağı aranıyor...'
+          : 'Location found. Searching for a water source within 100 meters...';
+    });
+
+    final result =
+        await _sourceService.checkNearbyWaterSource(position);
+
+    if (!mounted) return;
+
+    // 100 metre içinde uygun su kaynağı bulunamadı.
+    if (!result.found) {
+      setState(() {
+        _isLocationVerified = false;
+        _verifiedSource = null;
+
+        _locationMessage = _isTr
+            ? '100 metre çevrenizde uygun bir tatlı su kaynağı '
+                'OpenStreetMap verisinde doğrulanamadı.'
+            : 'No suitable freshwater source could be verified '
+                'within 100 meters using OpenStreetMap data.';
+      });
+
+      return;
+    }
+
+    // Kaynağın ismini belirle.
+    final sourceName =
+        result.name?.trim().isNotEmpty == true
+            ? result.name!.trim()
+            : (result.type?.trim().isNotEmpty == true
+                ? result.type!.trim()
+                : (_isTr
+                    ? 'Yakındaki Tatlı Su Kaynağı'
+                    : 'Nearby Freshwater Source'));
+
+    // Temizlik noktası olarak kullanacağımız kaynak.
+    final source = WaterSource(
+      id: 'gps_${DateTime.now().millisecondsSinceEpoch}',
+      name: sourceName,
+      latitude: position.latitude,
+      longitude: position.longitude,
+      description: result.message,
+    );
+
+    setState(() {
+      _verifiedSource = source;
+      _isLocationVerified = true;
+
+      _locationMessage = _isTr
+          ? 'Konum doğrulandı. 100 metre içinde uygun bir '
+              'tatlı su kaynağı bulundu.'
+          : 'Location verified. A suitable freshwater source '
+              'was found within 100 meters.';
+    });
+  } on LocationAccuracyException catch (e) {
+    // GPS var ancak 100 metrelik kontrol için yeterince hassas değil.
+    if (!mounted) return;
+
+    setState(() {
+      _isLocationVerified = false;
+      _verifiedSource = null;
+
+      _locationMessage = _isTr
+          ? 'GPS doğruluğu yeterli değil '
+              '(${e.accuracy.toStringAsFixed(0)} m). '
+              'Lütfen açık bir alanda tekrar deneyin.'
+          : 'GPS accuracy is not sufficient '
+              '(${e.accuracy.toStringAsFixed(0)} m). '
+              'Please try again in an open area.';
+    });
+  } catch (e) {
+    if (!mounted) return;
+
+    setState(() {
+      _isLocationVerified = false;
+      _verifiedSource = null;
+
+      _locationMessage = _isTr
+          ? 'Konum doğrulanamadı. '
+              'Lütfen konum ve internet bağlantınızı kontrol edip tekrar deneyin.'
+          : 'Location could not be verified. '
+              'Please check your location and internet connection and try again.';
+    });
+  } finally {
+    if (mounted) {
+      setState(() {
+        _isCheckingLocation = false;
+      });
+    }
+  }
+}
   void _showPhotoSourceDialog(WaterSource source) {
-    if (_isVerifying || _isSkipping) return;
+      if (_isVerifying ||
+      _isSkipping ||
+      !_isLocationVerified ||
+      _verifiedSource == null) {
+    return;
+  }
     showModalBottomSheet(
       context: context,
       backgroundColor: softBeige,
@@ -471,13 +522,9 @@ class _FinalMissionScreenState extends State<FinalMissionScreen> {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 440),
-            child: _isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(color: primaryGreen),
-                  )
-                : _isVerifying
-                ? _buildVerifyingOverlay()
-                : _buildMainContent(),
+            child: _isVerifying
+    ? _buildVerifyingOverlay()
+    : _buildMainContent(),
           ),
         ),
       ),
@@ -530,175 +577,347 @@ class _FinalMissionScreenState extends State<FinalMissionScreen> {
   }
 
   Widget _buildMainContent() {
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-      children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color(0xFFE3EBD8),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFFCCE0B8)),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.eco_rounded, color: primaryGreen, size: 30),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  _isTr
-                      ? 'En yakın tatlı su kenarına git, atıkları topla ve haritada izin kalsın!'
-                      : 'Go to the nearest freshwater spot, collect waste in a bag, and leave your mark on the map!',
-                  style: const TextStyle(
-                    fontSize: 12.5,
-                    color: primaryGreen,
-                    height: 1.4,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 18),
-        Text(
-          _isTr
-              ? 'EN YAKIN 3 TATLI SU KAYNAĞI'
-              : 'TOP 3 NEAREST FRESHWATER SPOTS',
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.bold,
-            color: Colors.black45,
-            letterSpacing: 1.1,
-          ),
-        ),
-        const SizedBox(height: 12),
-        ..._closestSources.map((source) => _buildSourceCard(source)),
-        const SizedBox(height: 8),
-        Text(
-          _isTr
-              ? 'Onaylanan temizlik fotoğrafı: +100 puan'
-              : 'Approved cleanup photo: +100 points',
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: primaryGreen,
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
-          ),
-        ),
-        const SizedBox(height: 14),
-        OutlinedButton.icon(
-          onPressed: _isSkipping || _isVerifying ? null : _continueWithoutPhoto,
-          icon: _isSkipping
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.arrow_forward_rounded),
-          label: Text(
-            _isTr ? 'Fotoğraf eklemeden devam et' : 'Continue without a photo',
-          ),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: primaryGreen,
-            side: const BorderSide(color: primaryGreen),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
-      ],
-    );
-  }
-
-  Widget _buildSourceCard(WaterSource source) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Padding(
+  return ListView(
+    padding: const EdgeInsets.symmetric(
+      horizontal: 18,
+      vertical: 10,
+    ),
+    children: [
+      Container(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        decoration: BoxDecoration(
+          color: const Color(0xFFE3EBD8),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: const Color(0xFFCCE0B8),
+          ),
+        ),
+        child: Row(
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE0F2FE),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Icon(
-                    Icons.water_drop_rounded,
-                    color: Colors.blueAccent,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _getLocalizedSourceName(source.name),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                          color: Color(0xFF1E293B),
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        _isTr ? 'Tatlı Su Kaynağı' : 'Freshwater Source',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.black45,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+            const Icon(
+              Icons.eco_rounded,
+              color: primaryGreen,
+              size: 30,
             ),
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: accentGreen,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _isTr
+                    ? 'Tatlı su kaynağının yakınındaysan konumunu doğrula, '
+                        'çevredeki atıkları topla ve fotoğrafını paylaş!'
+                    : 'If you are near a freshwater source, verify your '
+                        'location, collect nearby waste and share your photo!',
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  color: primaryGreen,
+                  height: 1.4,
+                  fontWeight: FontWeight.w600,
                 ),
-                icon: const Icon(Icons.camera_alt_outlined, size: 18),
-                label: Text(
-                  _isTr ? 'Fotoğraf Çek ve Doğrula' : 'Take Photo & Verify',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                onPressed: () => _showPhotoSourceDialog(source),
               ),
             ),
           ],
         ),
       ),
-    );
-  }
+
+      const SizedBox(height: 18),
+
+      Text(
+        _isTr
+            ? 'KONUM DOĞRULAMA'
+            : 'LOCATION VERIFICATION',
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          color: Colors.black45,
+          letterSpacing: 1.1,
+        ),
+      ),
+
+      const SizedBox(height: 12),
+
+      _buildLocationCard(),
+
+      const SizedBox(height: 12),
+
+      Text(
+        _isTr
+            ? 'Onaylanan temizlik fotoğrafı: +100 puan'
+            : 'Approved cleanup photo: +100 points',
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: primaryGreen,
+          fontWeight: FontWeight.w600,
+          fontSize: 13,
+        ),
+      ),
+
+      const SizedBox(height: 14),
+
+      OutlinedButton.icon(
+        onPressed: _isSkipping || _isVerifying
+            ? null
+            : _continueWithoutPhoto,
+        icon: _isSkipping
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                ),
+              )
+            : const Icon(
+                Icons.arrow_forward_rounded,
+              ),
+        label: Text(
+          _isTr
+              ? 'Fotoğraf eklemeden devam et'
+              : 'Continue without a photo',
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: primaryGreen,
+          side: const BorderSide(
+            color: primaryGreen,
+          ),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 15,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+      ),
+
+      const SizedBox(height: 20),
+    ],
+  );
+}
+ Widget _buildLocationCard() {
+  final source = _verifiedSource;
+
+  return Container(
+    padding: const EdgeInsets.all(18),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.04),
+          blurRadius: 10,
+          offset: const Offset(0, 4),
+        ),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: _isLocationVerified
+                    ? const Color(0xFFE3F3E8)
+                    : const Color(0xFFE0F2FE),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                _isLocationVerified
+                    ? Icons.verified_rounded
+                    : Icons.my_location_rounded,
+                color: _isLocationVerified
+                    ? accentGreen
+                    : Colors.blueAccent,
+                size: 24,
+              ),
+            ),
+
+            const SizedBox(width: 12),
+
+            Expanded(
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _isLocationVerified
+                        ? (_isTr
+                            ? 'Konum Doğrulandı'
+                            : 'Location Verified')
+                        : (_isTr
+                            ? 'Mevcut Konum'
+                            : 'Current Location'),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+
+                  if (_userPosition != null) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      _isTr
+                          ? 'GPS doğruluğu: '
+                              '${_userPosition!.accuracy.toStringAsFixed(0)} m'
+                          : 'GPS accuracy: '
+                              '${_userPosition!.accuracy.toStringAsFixed(0)} m',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+
+        if (_locationMessage != null) ...[
+          const SizedBox(height: 14),
+
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: _isLocationVerified
+                  ? const Color(0xFFF0F7F2)
+                  : const Color(0xFFFFF6E8),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              _locationMessage!,
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.4,
+                color: _isLocationVerified
+                    ? primaryGreen
+                    : const Color(0xFF8A5A00),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+
+        if (source != null) ...[
+          const SizedBox(height: 12),
+
+          Row(
+            children: [
+              const Icon(
+                Icons.water_drop_rounded,
+                color: Colors.blueAccent,
+                size: 19,
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  source.name,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+
+        const SizedBox(height: 16),
+
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _isLocationVerified
+                  ? accentGreen
+                  : primaryGreen,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              padding:
+                  const EdgeInsets.symmetric(vertical: 13),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            onPressed: _isCheckingLocation
+                ? null
+                : _verifyCurrentLocation,
+            icon: _isCheckingLocation
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : Icon(
+                    _isLocationVerified
+                        ? Icons.refresh_rounded
+                        : Icons.my_location_rounded,
+                    size: 19,
+                  ),
+            label: Text(
+              _isCheckingLocation
+                  ? (_isTr
+                      ? 'Konum Kontrol Ediliyor...'
+                      : 'Checking Location...')
+                  : _isLocationVerified
+                      ? (_isTr
+                          ? 'Konumu Tekrar Kontrol Et'
+                          : 'Check Location Again')
+                      : (_isTr
+                          ? 'Anlık Konumumu Doğrula'
+                          : 'Verify My Current Location'),
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ),
+
+        if (_isLocationVerified &&
+            source != null) ...[
+          const SizedBox(height: 10),
+
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor:
+                    const Color(0xFF3B82F6),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding:
+                    const EdgeInsets.symmetric(vertical: 13),
+                shape: RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.circular(14),
+                ),
+              ),
+              icon: const Icon(
+                Icons.camera_alt_outlined,
+                size: 19,
+              ),
+              label: Text(
+                _isTr
+                    ? 'Fotoğraf Çek ve Doğrula'
+                    : 'Take Photo & Verify',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+              onPressed: () =>
+                  _showPhotoSourceDialog(source),
+            ),
+          ),
+        ],
+      ],
+    ),
+  );
+}
 }
