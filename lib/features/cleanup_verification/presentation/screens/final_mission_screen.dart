@@ -1,8 +1,6 @@
 import 'dart:async';
-// ignore: avoid_web_libraries_in_flutter, deprecated_member_use
-import 'dart:html' as html;
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -151,7 +149,7 @@ class _FinalMissionScreenState extends State<FinalMissionScreen> {
                 ),
                 onTap: () {
                   Navigator.pop(context);
-                  _openWebCameraCapture(source);
+                  _pickImage(source, ImageSource.camera);
                 },
               ),
               ListTile(
@@ -165,7 +163,7 @@ class _FinalMissionScreenState extends State<FinalMissionScreen> {
                 ),
                 onTap: () {
                   Navigator.pop(context);
-                  _pickFromGallery(source);
+                  _pickImage(source, ImageSource.gallery);
                 },
               ),
             ],
@@ -175,163 +173,46 @@ class _FinalMissionScreenState extends State<FinalMissionScreen> {
     );
   }
 
-  // Canlı Web Kamerası ile Çekim
-  Future<void> _openWebCameraCapture(WaterSource source) async {
-    if (!kIsWeb) {
-      final ImagePicker picker = ImagePicker();
-      final XFile? img = await picker.pickImage(source: ImageSource.camera);
-      if (img != null) {
-        final bytes = await img.readAsBytes();
-        _processVerification(source, bytes);
+  // Kamera veya galeriden fotoğraf seçimi (mobil uyumlu, image_picker).
+  // Gemini'ye gitmeden önce 720 piksele küçültülür ve %75 kalitede sıkıştırılır.
+  Future<void> _pickImage(WaterSource source, ImageSource imageSource) async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image;
+    try {
+      image = await picker.pickImage(
+        source: imageSource,
+        maxWidth: 720,
+        maxHeight: 720,
+        imageQuality: 75,
+        preferredCameraDevice: CameraDevice.rear,
+      );
+    } on PlatformException catch (e) {
+      if (!mounted) return;
+      final isCamera = imageSource == ImageSource.camera;
+      if (e.code == 'camera_access_denied' ||
+          e.code == 'photo_access_denied') {
+        _showErrorDialog(
+          isCamera
+              ? (_isTr
+                    ? 'Kamera izni reddedildi. Görevi doğrulamak için cihaz ayarlarından kamera iznini açabilir veya galeriden fotoğraf seçebilirsin.'
+                    : 'Camera permission was denied. Enable camera access in your device settings or pick a photo from the gallery.')
+              : (_isTr
+                    ? 'Galeri izni reddedildi. Lütfen cihaz ayarlarından fotoğraf erişimine izin ver.'
+                    : 'Photo library permission was denied. Please allow photo access in your device settings.'),
+        );
+      } else {
+        _showErrorDialog(
+          isCamera
+              ? (_isTr
+                    ? 'Kamera açılamadı. Lütfen tekrar dene.'
+                    : 'Could not open the camera. Please try again.')
+              : (_isTr
+                    ? 'Galeri açılamadı. Lütfen tekrar dene.'
+                    : 'Could not open the gallery. Please try again.'),
+        );
       }
       return;
     }
-
-    try {
-      final stream = await html.window.navigator.mediaDevices?.getUserMedia({
-        'video': {'facingMode': 'environment'},
-        'audio': false,
-      });
-
-      if (stream == null) {
-        _showErrorDialog("Kamera açılamadı veya erişim izni verilmedi.");
-        return;
-      }
-
-      if (!mounted) return;
-
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (dialogCtx) {
-          final videoElement = html.VideoElement()
-            ..srcObject = stream
-            ..autoplay = true
-            ..muted = true
-            ..style.width = '100%'
-            ..style.height = '100%'
-            ..style.objectFit = 'cover';
-
-          return Dialog(
-            backgroundColor: Colors.black,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Container(
-              width: 380,
-              height: 480,
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        "Kamera Önizleme",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white),
-                        onPressed: () {
-                          stream.getTracks().forEach((track) => track.stop());
-                          Navigator.pop(dialogCtx);
-                        },
-                      ),
-                    ],
-                  ),
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: HtmlElementView.fromTagName(
-                        tagName: 'video',
-                        onElementCreated: (element) {
-                          final el = element as html.VideoElement;
-                          el.srcObject = stream;
-                          el.autoplay = true;
-                          el.muted = true;
-                          el.play();
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: primaryGreen,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      icon: const Icon(Icons.camera_alt_rounded),
-                      label: Text(
-                        _isTr ? "Fotoğrafı Çek" : 'Capture Photo',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      onPressed: () async {
-                        final int sourceW = videoElement.videoWidth > 0
-                            ? videoElement.videoWidth
-                            : 640;
-                        final int sourceH = videoElement.videoHeight > 0
-                            ? videoElement.videoHeight
-                            : 480;
-                        final int targetW = sourceW > 720 ? 720 : sourceW;
-                        final int targetH = (sourceH / sourceW * targetW)
-                            .toInt();
-
-                        final canvas = html.CanvasElement(
-                          width: targetW,
-                          height: targetH,
-                        );
-                        canvas.context2D.drawImageScaled(
-                          videoElement,
-                          0,
-                          0,
-                          targetW,
-                          targetH,
-                        );
-
-                        final blob = await canvas.toBlob('image/jpeg', 0.75);
-                        final reader = html.FileReader();
-                        reader.readAsArrayBuffer(blob);
-                        await reader.onLoadEnd.first;
-
-                        final bytes = Uint8List.fromList(
-                          reader.result as List<int>,
-                        );
-
-                        stream.getTracks().forEach((track) => track.stop());
-                        if (dialogCtx.mounted) Navigator.pop(dialogCtx);
-
-                        _processVerification(source, bytes);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      );
-    } catch (e) {
-      _showErrorDialog("Kamera başlatılamadı: $e");
-    }
-  }
-
-  // Galeriden Seçim
-  Future<void> _pickFromGallery(WaterSource source) async {
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 720,
-      imageQuality: 75,
-    );
 
     if (image == null) return;
     final bytes = await image.readAsBytes();
