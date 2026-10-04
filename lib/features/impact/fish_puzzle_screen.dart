@@ -13,7 +13,11 @@ import '../../localization/app_localizations.dart';
 import '../../ui/widgets.dart';
 
 class FishPuzzleScreen extends StatefulWidget {
-  const FishPuzzleScreen({super.key, required this.story, this.onFinish});
+  const FishPuzzleScreen({
+    super.key,
+    required this.story,
+    this.onFinish,
+  });
 
   final StoryController story;
   final VoidCallback? onFinish;
@@ -26,10 +30,11 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
     with WidgetsBindingObserver {
   static const _asset = 'assets/images/kucukcekmece.png';
 
-  // Oyunda gerçek saat; testlerde sahte zamanla (tester.pump) ilerler.
   final _clock = time.clock.stopwatch();
   final _placed = <int>{};
-  final _order = List<int>.generate(9, (i) => i)..shuffle();
+  late final List<int> _order;
+
+  Duration _previousElapsed = Duration.zero;
 
   ui.Image? _image;
   Timer? _timer;
@@ -42,6 +47,8 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
 
   int _score = 0;
 
+  Duration get _elapsed => _previousElapsed + _clock.elapsed;
+
   bool get _tr => AppLocalizations.instance.isTurkish;
 
   bool get _paused => widget.story.paused || _background;
@@ -50,13 +57,29 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
   void initState() {
     super.initState();
 
-    WidgetsBinding.instance.addObserver(this);
-    widget.story.addListener(_syncClock);
+    final story = widget.story;
 
-    // Çalan müzik durur (playBGM önce durdurur), puzzle müziği başlar.
+    _placed.addAll(story.fishPuzzlePlaced);
+    _previousElapsed = story.fishPuzzleElapsed;
+    _score = story.fishPuzzleScore;
+    _finished = _placed.length == 9;
+
+    _order = story.fishPuzzleOrder.length == 9
+        ? List<int>.from(story.fishPuzzleOrder)
+        : (List<int>.generate(9, (i) => i)..shuffle());
+
+    WidgetsBinding.instance.addObserver(this);
+    story.addListener(_syncClock);
+
     AudioManager.instance.playBGM('puzzle_bg.mp3');
 
     _loadImage();
+
+    if (_finished) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _saveResult();
+      });
+    }
 
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted && !_paused && !_finished && _image != null) {
@@ -65,13 +88,33 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
     });
   }
 
+  void _rememberProgress() {
+    final story = widget.story;
+
+    story.fishPuzzlePlaced
+      ..clear()
+      ..addAll(_placed);
+
+    story.fishPuzzleOrder
+      ..clear()
+      ..addAll(_order);
+
+    story.fishPuzzleElapsed = _elapsed;
+    story.fishPuzzleScore = _score;
+  }
+
   Future<void> _loadImage() async {
-    if (mounted) setState(() => _loadFailed = false);
+    if (!mounted) return;
+
+    setState(() => _loadFailed = false);
 
     try {
       final data = await rootBundle.load(_asset);
       final codec = await ui.instantiateImageCodec(
-        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+        data.buffer.asUint8List(
+          data.offsetInBytes,
+          data.lengthInBytes,
+        ),
       );
 
       late final ui.FrameInfo frame;
@@ -90,12 +133,17 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
       setState(() => _image = frame.image);
       _syncClock();
     } catch (_) {
-      if (mounted) setState(() => _loadFailed = true);
+      if (mounted) {
+        setState(() => _loadFailed = true);
+      }
     }
   }
 
   void _syncClock() {
-    if (_paused || _finished || _image == null) {
+    if (_paused ||
+        _finished ||
+        _image == null ||
+        widget.story.scene != Scene.fishPuzzle) {
       _clock.stop();
     } else {
       _clock.start();
@@ -109,32 +157,42 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
   }
 
   void _place(int index) {
-    if (_paused || _finished || _placed.contains(index)) return;
-
-    setState(() => _placed.add(index));
-
-    // Son parçada iki ses üst üste binmesin: yalnızca kazanma sesi çalar.
-    if (_placed.length < 9) {
-      AudioManager.instance.playEffect('ch1_dogru_kutu.mp3');
+    if (_paused ||
+        _finished ||
+        index < 0 ||
+        index >= 9 ||
+        _placed.contains(index)) {
+      return;
     }
 
-    if (_placed.length == 9) {
-      _clock.stop();
-      _score = max(20, 100 - _clock.elapsed.inSeconds);
-      _finished = true;
+    setState(() {
+      _placed.add(index);
+
+      if (_placed.length == 9) {
+        _clock.stop();
+        _score = max(20, 100 - _elapsed.inSeconds);
+        _finished = true;
+      }
+    });
+
+    _rememberProgress();
+
+    if (_finished) {
       AudioManager.instance.playEffect('kazandin.mp3');
       _saveResult();
+    } else {
+      AudioManager.instance.playEffect('ch1_dogru_kutu.mp3');
     }
   }
 
-  // Parça hedefe tutturulamadan bırakıldı (yanlış yer ya da tahta dışı).
   void _missed() {
     if (!mounted || _paused || _finished) return;
+
     AudioManager.instance.playEffect('ch1_yanlis_kutu.mp3');
   }
 
   Future<void> _saveResult() async {
-    if (_saving || _saved) return;
+    if (!mounted || _saving || _saved) return;
 
     setState(() => _saving = true);
 
@@ -142,9 +200,13 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
       final prefs = await SharedPreferences.getInstance();
       final success = await prefs.setInt('puzzle_score', _score);
 
-      if (!success) throw StateError('Puzzle score could not be saved.');
+      if (!success) {
+        throw StateError('Puzzle score could not be saved.');
+      }
 
-      if (mounted) setState(() => _saved = true);
+      if (mounted) {
+        setState(() => _saved = true);
+      }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -158,7 +220,9 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
         );
       }
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        setState(() => _saving = false);
+      }
     }
   }
 
@@ -166,8 +230,11 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
   void dispose() {
     widget.story.removeListener(_syncClock);
     WidgetsBinding.instance.removeObserver(this);
+
     _timer?.cancel();
     _clock.stop();
+    _rememberProgress();
+
     _image?.dispose();
     super.dispose();
   }
@@ -177,7 +244,11 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
       width: cell * 1.5,
       height: cell * 1.5,
       child: CustomPaint(
-        painter: _PiecePainter(image: _image!, index: index, cell: cell),
+        painter: _PiecePainter(
+          image: _image!,
+          index: index,
+          cell: cell,
+        ),
       ),
     );
   }
@@ -217,23 +288,23 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
                     Text(
                       _tr
                           ? '“Parçaları birleştirince Küçükçekmece Gölü’nü '
-                                'yeniden gördük. Doğada da su, balıklar ve insanlar '
-                                'birbirine bağlı. Plastik küçülse bile yok olmaz; '
-                                'suya ulaşmadan atıkları doğru kutuya atalım!”'
+                              'yeniden gördük. Doğada da su, balıklar ve insanlar '
+                              'birbirine bağlı. Plastik küçülse bile yok olmaz; '
+                              'suya ulaşmadan atıkları doğru kutuya atalım!”'
                           : '“Putting the pieces together revealed Küçükçekmece '
-                                'Lake. Water, fish and people are connected too. '
-                                'Plastic does not disappear when it breaks into '
-                                'smaller pieces. Let’s sort waste before it reaches water!”',
+                              'Lake. Water, fish and people are connected too. '
+                              'Plastic does not disappear when it breaks into '
+                              'smaller pieces. Let’s sort waste before it reaches water!”',
                       textAlign: TextAlign.center,
                       style: const TextStyle(height: 1.6, color: ink),
                     ),
                     const SizedBox(height: 16),
                     Text(
                       _tr
-                          ? '9/9 parça • ${_clock.elapsed.inSeconds} saniye\n'
-                                'Puzzle puanı: $_score'
-                          : '9/9 pieces • ${_clock.elapsed.inSeconds} seconds\n'
-                                'Puzzle score: $_score',
+                          ? '9/9 parça • ${_elapsed.inSeconds} saniye\n'
+                              'Puzzle puanı: $_score'
+                          : '9/9 pieces • ${_elapsed.inSeconds} seconds\n'
+                              'Puzzle score: $_score',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
@@ -249,8 +320,8 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
                       onPressed: _saving
                           ? null
                           : _saved
-                          ? widget.onFinish
-                          : _saveResult,
+                              ? widget.onFinish
+                              : _saveResult,
                       icon: Icons.arrow_forward_rounded,
                     ),
                   ],
@@ -266,7 +337,10 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: Listenable.merge([widget.story, AppLocalizations.instance]),
+      animation: Listenable.merge([
+        widget.story,
+        AppLocalizations.instance,
+      ]),
       builder: (context, _) {
         return LayoutBuilder(
           builder: (context, constraints) {
@@ -323,7 +397,7 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
                                 const SizedBox(height: 8),
                                 Text(
                                   '${_placed.length}/9  •  '
-                                  '${_clock.elapsed.inSeconds} ${_tr ? 'sn' : 's'}',
+                                  '${_elapsed.inSeconds} ${_tr ? 'sn' : 's'}',
                                   style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -381,26 +455,28 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
                                             details.data == index,
                                         onAcceptWithDetails: (details) =>
                                             _place(details.data),
-                                        builder:
-                                            (context, candidates, rejected) {
-                                              return Container(
-                                                decoration: BoxDecoration(
-                                                  color: candidates.isNotEmpty
-                                                      ? Colors.green.withValues(
-                                                          alpha: .18,
-                                                        )
-                                                      : Colors.transparent,
-                                                  border:
-                                                      _placed.contains(index)
-                                                      ? null
-                                                      : Border.all(
-                                                          color: ink.withValues(
-                                                            alpha: .15,
-                                                          ),
-                                                        ),
-                                                ),
-                                              );
-                                            },
+                                        builder: (
+                                          context,
+                                          candidates,
+                                          rejected,
+                                        ) {
+                                          return Container(
+                                            decoration: BoxDecoration(
+                                              color: candidates.isNotEmpty
+                                                  ? Colors.green.withValues(
+                                                      alpha: .18,
+                                                    )
+                                                  : Colors.transparent,
+                                              border: _placed.contains(index)
+                                                  ? null
+                                                  : Border.all(
+                                                      color: ink.withValues(
+                                                        alpha: .15,
+                                                      ),
+                                                    ),
+                                            ),
+                                          );
+                                        },
                                       ),
                                     ),
                                 ],
@@ -428,8 +504,6 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
                                       maxSimultaneousDrags: _paused ? 0 : 1,
                                       rootOverlay: true,
                                       onDraggableCanceled: (_, _) => _missed(),
-                                      // Tahta ve eldeki parça aynı boyutta;
-                                      // tutulduğu nokta sürükleme boyunca korunur.
                                       feedback: Material(
                                         color: Colors.transparent,
                                         child: _piece(index, cell),
@@ -438,12 +512,12 @@ class _FishPuzzleScreenState extends State<FishPuzzleScreen>
                                         width: cell * 1.5,
                                         height: cell * 1.5,
                                       ),
-                                      // Tutuş sesi parmak değdiği anda çalar;
-                                      // sürüklemenin başlamasını beklemez.
                                       child: Listener(
-                                        onPointerDown: (_) => AudioManager
-                                            .instance
-                                            .playEffect('puzzle_tutus.mp3'),
+                                        onPointerDown: (_) {
+                                          AudioManager.instance.playEffect(
+                                            'puzzle_tutus.mp3',
+                                          );
+                                        },
                                         child: _piece(index, cell),
                                       ),
                                     ),
@@ -489,7 +563,12 @@ class _PiecePainter extends CustomPainter {
 
     final path = Path()..moveTo(pad, pad);
 
-    void edge(Offset start, Offset end, Offset normal, double direction) {
+    void edge(
+      Offset start,
+      Offset end,
+      Offset normal,
+      double direction,
+    ) {
       final delta = end - start;
 
       Offset p(double t, double depth) =>
@@ -507,11 +586,9 @@ class _PiecePainter extends CustomPainter {
       }
 
       line(p(.35, 0));
-
       curve(p(.44, 0), p(.35, .08), p(.36, .13));
       curve(p(.37, .25), p(.63, .25), p(.64, .13));
       curve(p(.65, .08), p(.56, 0), p(.65, 0));
-
       line(end);
     }
 

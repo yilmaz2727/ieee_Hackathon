@@ -1,7 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
-
+import 'package:flutter/services.dart';
 import '../audio_manager.dart';
 import '../localization/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -51,7 +51,10 @@ class StoryController extends ChangeNotifier {
   double elapsed = 0;
   double spawnClock = 0;
   double worldTime = 0;
-
+  final fishPuzzlePlaced = <int>{};
+  final fishPuzzleOrder = <int>[];
+  Duration fishPuzzleElapsed = Duration.zero;
+  int fishPuzzleScore = 0;
   int collected = 0;
   int firstCollected = 0;
   int firstIncoming = 0;
@@ -147,6 +150,7 @@ class StoryController extends ChangeNotifier {
   // -------------------------------------------------
 
   double fishingTime = 0;
+  double biteVibrationClock = 0;
   double fishX = .5;
 
   // Oyuncunun dokunduğu olta konumu
@@ -372,6 +376,7 @@ class StoryController extends ChangeNotifier {
   /// Kayıt noktası: yeni oyun onaylandı ama CH1 hikâye girişi henüz
   /// bitirilmedi. Bu kayıttan devam edilince hikâye girişi yeniden açılır.
   static const storyIntroCheckpoint = 9;
+  static const fishPuzzleCheckpoint = 10;
 
   void startNew() {
     resetProgress();
@@ -380,6 +385,10 @@ class StoryController extends ChangeNotifier {
 
   /// Bellekteki tüm oyun ilerlemesini sıfırlar; sahneyi değiştirmez.
   void resetProgress() {
+    fishPuzzlePlaced.clear();
+    fishPuzzleOrder.clear();
+    fishPuzzleElapsed = Duration.zero;
+    fishPuzzleScore = 0;
     sources.clear();
     found.clear();
     differenceFound.clear();
@@ -432,9 +441,10 @@ class StoryController extends ChangeNotifier {
       AudioManager.instance.stopBGM();
     }
 
-    // 6 = Chapter 1 fark bulmaca sonuç ekranı
-    // 5 = Chapter 1 fark bulmaca checkpoint'i
-    if (checkpoint == 7 || checkpoint == 8) {
+    if (checkpoint == fishPuzzleCheckpoint) {
+      pages.addAll([0, 1, 2, 3]);
+      go(Scene.fishPuzzle);
+    } else if (checkpoint == 7 || checkpoint == 8) {
       pages.addAll([0, 1]);
       prepareHealing();
       go(healingComplete ? Scene.fishHealingResult : Scene.fishHealing);
@@ -571,10 +581,13 @@ class StoryController extends ChangeNotifier {
 
     if (selected == correctAnswer) {
       preventionCorrect++;
-
       preventionFeedback = tr('story.prevention.correct');
+
+      AudioManager.instance.playEffect('ch1_dogru_kutu.mp3');
     } else {
       preventionFeedback = tr('story.prevention.wrong');
+
+      AudioManager.instance.playEffect('ch1_yanlis_kutu.mp3');
     }
 
     notifyListeners();
@@ -689,7 +702,7 @@ class StoryController extends ChangeNotifier {
     reeling = false;
 
     fishingTime = 0;
-
+    biteVibrationClock = 0;
     fishingHint = tr('story.fishing.wait');
 
     AudioManager.instance.playEffect('olta_atma.mp3');
@@ -712,17 +725,15 @@ class StoryController extends ChangeNotifier {
     }
 
     if (bite) {
+      biteVibrationClock = 0; // Balık çekildiğinde titreşim dursun
       catches++;
-      reeling = false;
-
+      // İlk iki yakalama çöp; üçüncü yakalama balık.
+      if (catches >= 3) {
+        HapticFeedback.vibrate();
+      }
       if (catches <= 2) {
         waterClarity[2] = catches / 2;
       }
-
-      // İlk iki çekişte çöp, üçüncüde balık gelir.
-      AudioManager.instance.playEffect(
-        catches < 3 ? 'cop_tuttu.mp3' : 'balik_tuttu.mp3',
-      );
 
       go(catches < 3 ? Scene.catchWaste : Scene.inspection);
 
@@ -867,25 +878,34 @@ class StoryController extends ChangeNotifier {
     // -------------------------------------------------
 
     // Oyuncu oltayı çekmek için basılı tutarken süre işlemez.
-    if (scene == Scene.fishing && cast && !reeling) {
-      fishingTime += dt;
+    // CHAPTER 3 - OLTA ZAMANLAMASI
+    if (scene == Scene.fishing && cast) {
+      // Oyuncu balığı çekiyorsa kaçış sayacını durdur.
+      if (!(bite && reeling)) {
+        fishingTime += dt;
+      }
 
+      // Balık vurduğunda (3 ile 6. saniyeler arası) çekene kadar sık sık titrer
       if (fishingTime >= 3 && fishingTime < 6) {
         bite = true;
-
         fishingHint = tr('story.fishing.now');
+
+        // Balık oltada çırpındığı sürece her 0.18 saniyede bir hafifçe titrer:
+        biteVibrationClock += dt;
+        if (biteVibrationClock >= 0.18) {
+          biteVibrationClock = 0;
+          HapticFeedback.lightImpact(); // Hafif ve sık titreşim efekti
+        }
       }
 
       if (fishingTime >= 6) {
         cast = false;
         bite = false;
-
         fishingTime = 0;
-
+        biteVibrationClock = 0;
         fishingHint = tr('story.fishing.missed');
       }
     }
-
     notifyListeners();
   }
 }

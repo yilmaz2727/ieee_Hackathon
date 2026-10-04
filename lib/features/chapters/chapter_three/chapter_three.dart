@@ -62,7 +62,9 @@ class _ChapterThreeFishingState extends State<ChapterThreeFishing>
 
   void _onStory() {
     // Şamandıra battı, buton aktifleşti: hafif titreşim.
-    if (story.bite && !_wasBite) HapticFeedback.lightImpact();
+    if (story.bite && !_wasBite && !story.paused) {
+      HapticFeedback.vibrate();
+    }
     _wasBite = story.bite;
 
     // Kitap/duraklatma açılırsa ya da balık kaçarsa bar sıfırlanır.

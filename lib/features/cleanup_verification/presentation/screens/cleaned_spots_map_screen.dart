@@ -196,7 +196,7 @@ class _CleanedSpotsMapScreenState extends State<CleanedSpotsMapScreen> {
           waterSourceName: source.name,
           latitude: source.latitude,
           longitude: source.longitude,
-          earnedPoints: 20,
+          earnedPoints: 100,
         );
       }
 

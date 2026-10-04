@@ -49,7 +49,18 @@ class GuardianRewards {
   }
 
   // Yalnızca AI sonucunun accepted olduğu dal tarafından çağrılır.
-  static Future<void> recordApprovedRun(String sourceName) async {
+  static Future<void> recordApprovedRun(String sourceName) {
+    return _recordCompletedRun(photoApproved: true, sourceName: sourceName);
+  }
+
+  static Future<void> recordWithoutPhoto() {
+    return _recordCompletedRun(photoApproved: false);
+  }
+
+  static Future<void> _recordCompletedRun({
+    required bool photoApproved,
+    String? sourceName,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final id = prefs.getString('current_user_id');
     final nickname = prefs.getString('current_user_nickname');
@@ -62,12 +73,15 @@ class GuardianRewards {
       throw StateError('Complete the game before claiming a reward.');
     }
 
-    // Toplamı yeniden hesapla: fotoğraf bonusu tekrar tekrar eklenmez.
     final cleanup = prefs.getInt('cleanup_score') ?? 0;
     final protection = prefs.getInt('chapter2_score') ?? 0;
     final puzzle = prefs.getInt('puzzle_score') ?? 0;
     final quiz = prefs.getInt('quiz_score') ?? 0;
-    final score = max(0, cleanup + protection + puzzle + quiz + 20);
+
+    final photoBonus = photoApproved ? 100 : 0;
+
+    // Sabit toplam hesaplanır; tekrar çağrılırsa bonus katlanmaz.
+    final score = max(0, cleanup + protection + puzzle + quiz + photoBonus);
 
     final oldRaw = prefs.getString(_key(id));
     final old = oldRaw == null
@@ -76,7 +90,7 @@ class GuardianRewards {
 
     final oldScore = (old?['score'] as num?)?.toInt() ?? -1;
 
-    // Önceki yüksek skor ve o skora ait sertifika bilgileri korunur.
+    // Önceki en iyi başarı korunur.
     if (score > oldScore) {
       final reward = <String, dynamic>{
         'userId': id,
@@ -90,19 +104,28 @@ class GuardianRewards {
         'trashCount': prefs.getInt('cleanup_count') ?? 0,
         'fishSaved': prefs.getInt('fish_saved') ?? 0,
         'quizCorrect': prefs.getInt('quiz_correct') ?? 0,
-        'photoBonus': 20,
-        'source': sourceName,
+        'photoBonus': photoBonus,
+        'photoVerified': photoApproved,
+        'source': photoApproved ? (sourceName ?? '') : '',
         'earnedAt': DateTime.now().toIso8601String(),
       };
 
       final saved = await prefs.setString(_key(id), jsonEncode(reward));
-      if (!saved) throw StateError('Reward could not be saved.');
+
+      if (!saved) {
+        throw StateError('Reward could not be saved.');
+      }
     }
 
-    await prefs.setInt('bonus_score', 20);
+    await prefs.setInt('bonus_score', photoBonus);
     await prefs.setInt('total_score', score);
-    await prefs.setString('cleaned_source_name', sourceName);
-    await prefs.setBool('ai_photo_verified', true);
+    await prefs.setBool('ai_photo_verified', photoApproved);
+
+    if (photoApproved) {
+      await prefs.setString('cleaned_source_name', sourceName ?? '');
+    } else {
+      await prefs.remove('cleaned_source_name');
+    }
   }
 
   static Future<void> downloadCertificate({required bool turkish}) async {
@@ -113,6 +136,14 @@ class GuardianRewards {
     final score = (reward['score'] as num).toInt();
     final nickname = reward['nickname'] as String;
     final date = DateTime.parse(reward['earnedAt'] as String);
+    final photoVerified =
+        reward['photoVerified'] == true ||
+        (reward['photoVerified'] == null &&
+            ((reward['photoBonus'] as num?)?.toInt() ?? 0) > 0);
+
+    final missionSource = photoVerified
+        ? (reward['source'] as String? ?? '')
+        : (turkish ? 'Fotoğraf görevi atlandı' : 'Photo mission skipped');
 
     final regular = pw.Font.ttf(
       await rootBundle.load('assets/fonts/DejaVuSans.ttf'),
@@ -199,9 +230,9 @@ class GuardianRewards {
               pw.Text(
                 t(
                   'Oyundaki görevleri tamamladı ve gerçek dünya görevi için '
-                  'gönderdiği fotoğraf yapay zekâ kontrolünden geçti.',
+                      'gönderdiği fotoğraf yapay zekâ kontrolünden geçti.',
                   'Completed the game missions and submitted a real-world '
-                  'mission photo that passed the AI check.',
+                      'mission photo that passed the AI check.',
                 ),
                 textAlign: pw.TextAlign.center,
                 style: const pw.TextStyle(fontSize: 12, lineSpacing: 4),
@@ -221,7 +252,7 @@ class GuardianRewards {
                 '${t('Korunan balık', 'Fish protected')}: ${reward['fishSaved']}\n'
                 '${t('Puzzle puanı', 'Puzzle score')}: ${reward['puzzleScore']}\n'
                 '${t('Hikâye testi', 'Story quiz')}: ${reward['quizCorrect']}/5\n'
-                '${t('Görev yeri', 'Mission location')}: ${reward['source']}',
+                '${t('Görev yeri', 'Mission location')}: $missionSource',
                 textAlign: pw.TextAlign.center,
                 style: const pw.TextStyle(fontSize: 11, lineSpacing: 5),
               ),
@@ -233,12 +264,20 @@ class GuardianRewards {
               ),
               pw.SizedBox(height: 12),
               pw.Text(
-                t(
-                  'Bu belge oyun içi öğrenme ve katılım başarısını gösterir; '
-                  'resmî çevre veya su kalitesi belgesi değildir.',
-                  'This certificate recognizes learning and participation '
-                  'in the game; it is not an official water-quality assessment.',
-                ),
+                photoVerified
+                    ? t(
+                        'Oyundaki görevleri tamamladı ve gerçek dünya görevi için '
+                            'gönderdiği fotoğraf yapay zekâ kontrolünden geçti.',
+                        'Completed the game missions and submitted a real-world '
+                            'mission photo that passed the AI check.',
+                      )
+                    : t(
+                        'Oyundaki görevleri tamamlayarak atık ayrıştırma, '
+                            'mikroplastikler ve su canlılarını koruma konularındaki '
+                            'öğrenme yolculuğunu başarıyla bitirdi.',
+                        'Completed the game missions and the learning journey '
+                            'about waste sorting, microplastics and protecting aquatic life.',
+                      ),
                 textAlign: pw.TextAlign.center,
                 style: const pw.TextStyle(
                   fontSize: 8,
@@ -327,13 +366,11 @@ class _GuardianRewardScreenState extends State<GuardianRewardScreen> {
                     Text(
                       snapshot.hasError
                           ? (_tr
-                              ? 'Rozetin şu anda okunamadı.'
-                              : 'Could not load your badge.')
+                                ? 'Rozetin şu anda okunamadı.'
+                                : 'Could not load your badge.')
                           : (_tr
-                              ? 'Rozetini kazanmak için oyunu bitir ve gerçek '
-                                  'görev fotoğrafının onaylanmasını sağla.'
-                              : 'Finish the game and get your real-world '
-                                  'mission photo approved to earn your badge.'),
+                                ? 'Rozetini kazanmak için oyunu tamamla.'
+                                : 'Complete the game to earn your badge.'),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 18),
@@ -390,11 +427,11 @@ class _GuardianRewardScreenState extends State<GuardianRewardScreen> {
                 Text(
                   _tr
                       ? 'Bronz: 0–199 • Gümüş: 200–299 • Altın: 300+\n'
-                          'Tekrar oyna, fotoğraf görevini tamamla ve rozetini yükselt. '
-                          'Önceki başarın kaybolmaz.'
+                            'Tekrar oyna, fotoğraf görevini tamamla ve rozetini yükselt. '
+                            'Önceki başarın kaybolmaz.'
                       : 'Bronze: 0–199 • Silver: 200–299 • Gold: 300+\n'
-                          'Replay and complete the photo mission to upgrade '
-                          'your badge. Your previous achievement stays safe.',
+                            'Replay and complete the photo mission to upgrade '
+                            'your badge. Your previous achievement stays safe.',
                   textAlign: TextAlign.center,
                   style: const TextStyle(fontSize: 12, height: 1.6),
                 ),

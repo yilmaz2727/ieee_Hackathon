@@ -33,6 +33,7 @@ class _FinalMissionScreenState extends State<FinalMissionScreen> {
   Position? _userPosition;
   bool _isLoading = true;
   bool _isVerifying = false;
+  bool _isSkipping = false;
   bool get _isTr => AppLocalizations.instance.isTurkish;
 
   static const Color primaryGreen = Color(0xFF2C5E43);
@@ -43,6 +44,85 @@ class _FinalMissionScreenState extends State<FinalMissionScreen> {
   void initState() {
     super.initState();
     _determinePositionAndLoadSources();
+  }
+
+  Future<void> _continueWithoutPhoto() async {
+    if (_isVerifying || _isSkipping) return;
+
+    setState(() => _isSkipping = true);
+
+    try {
+      final skip = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          backgroundColor: softBeige,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          icon: const Icon(Icons.eco_rounded, color: primaryGreen, size: 44),
+          title: Text(
+            _isTr
+                ? 'Fotoğraf eklemeden devam edilsin mi?'
+                : 'Continue without a photo?',
+            textAlign: TextAlign.center,
+          ),
+          content: Text(
+            _isTr
+                ? 'Temizlik görevini fotoğrafla paylaşır ve fotoğrafın '
+                      'onaylanırsa 100 ek puan kazanabilirsin! '
+                      'Doğa için attığın bu adım başkalarına da ilham verebilir.\n\n'
+                      'Fotoğraf eklemek zorunlu değil. İstersen mevcut '
+                      'puanlarınla sertifikanı alabilirsin.'
+                : 'Share a photo of your cleanup and earn 100 bonus '
+                      'points when it is approved! Your action for nature '
+                      'can inspire others too.\n\n'
+                      'Adding a photo is optional. You can receive your '
+                      'certificate with your existing points.',
+            style: const TextStyle(height: 1.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(
+                _isTr ? 'Fotoğrafsız devam et' : 'Continue without a photo',
+              ),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: accentGreen),
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(_isTr ? 'Fotoğraf ekle' : 'Add a photo'),
+            ),
+          ],
+        ),
+      );
+
+      if (!mounted || skip != true) return;
+
+      // Önce bölüm puanlarını ve oyunun tamamlanma bilgisini kaydet.
+      await widget.beforeVerify();
+
+      if (!mounted) return;
+
+      // Fotoğraf bonusu vermeden sertifika kaydını oluştur.
+      await GuardianRewards.recordWithoutPhoto();
+
+      if (!mounted) return;
+
+      // Mevcut bağlantı sertifika/rozet ekranına götürüyor.
+      widget.onComplete();
+    } catch (_) {
+      if (mounted) {
+        _showErrorDialog(
+          _isTr
+              ? 'Oyun sonucun kaydedilemedi. Lütfen tekrar dene.'
+              : 'Could not save your game result. Please try again.',
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSkipping = false);
+      }
+    }
   }
 
   Future<void> _determinePositionAndLoadSources() async {
@@ -117,6 +197,7 @@ class _FinalMissionScreenState extends State<FinalMissionScreen> {
   }
 
   void _showPhotoSourceDialog(WaterSource source) {
+    if (_isVerifying || _isSkipping) return;
     showModalBottomSheet(
       context: context,
       backgroundColor: softBeige,
@@ -189,8 +270,7 @@ class _FinalMissionScreenState extends State<FinalMissionScreen> {
     } on PlatformException catch (e) {
       if (!mounted) return;
       final isCamera = imageSource == ImageSource.camera;
-      if (e.code == 'camera_access_denied' ||
-          e.code == 'photo_access_denied') {
+      if (e.code == 'camera_access_denied' || e.code == 'photo_access_denied') {
         _showErrorDialog(
           isCamera
               ? (_isTr
@@ -494,6 +574,41 @@ class _FinalMissionScreenState extends State<FinalMissionScreen> {
         ),
         const SizedBox(height: 12),
         ..._closestSources.map((source) => _buildSourceCard(source)),
+        const SizedBox(height: 8),
+        Text(
+          _isTr
+              ? 'Onaylanan temizlik fotoğrafı: +100 puan'
+              : 'Approved cleanup photo: +100 points',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: primaryGreen,
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+          ),
+        ),
+        const SizedBox(height: 14),
+        OutlinedButton.icon(
+          onPressed: _isSkipping || _isVerifying ? null : _continueWithoutPhoto,
+          icon: _isSkipping
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.arrow_forward_rounded),
+          label: Text(
+            _isTr ? 'Fotoğraf eklemeden devam et' : 'Continue without a photo',
+          ),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: primaryGreen,
+            side: const BorderSide(color: primaryGreen),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
       ],
     );
   }

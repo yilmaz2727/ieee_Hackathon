@@ -1,5 +1,5 @@
 import 'dart:convert';
-
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/foundation.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:image/image.dart' as img;
@@ -7,27 +7,48 @@ import 'package:image/image.dart' as img;
 import '../../domain/entities/verification_result.dart';
 
 class GeminiVisionService {
- 
-  static const String _apiKey = String.fromEnvironment(
-  'GEMINI_API_KEY',
-);
-     
+  // Önbellek için değişken
+  static String? _cachedApiKey;
+
+  // .env dosyasından anahtarı okuyan yardımcı metod
+  static Future<String> _getApiKey() async {
+    if (_cachedApiKey != null && _cachedApiKey!.isNotEmpty) {
+      return _cachedApiKey!;
+    }
+    try {
+      final envString = await rootBundle.loadString('.env');
+      for (final line in envString.split('\n')) {
+        final trimmed = line.trim();
+        if (trimmed.startsWith('GEMINI_API_KEY=')) {
+          _cachedApiKey = trimmed.substring('GEMINI_API_KEY='.length).trim();
+          return _cachedApiKey!;
+        }
+      }
+    } catch (e) {
+      debugPrint('.env okuma hatası: $e');
+    }
+    return '';
+  }
+
   final List<String> _modelsToTry = [
     'gemini-3.5-flash-lite',
     'gemini-3.5-flash',
     'gemini-3.0-flash',
   ];
 
-  Future<VerificationResult> verifyCleanupPhoto(
-    Uint8List imageBytes,
-  ) async {
-    if (_apiKey.isEmpty) {
+  Future<VerificationResult> verifyCleanupPhoto(Uint8List imageBytes) async {
+    // API anahtarını .env dosyasından alıyoruz:
+    final apiKey = await _getApiKey();
+
+    if (apiKey.isEmpty) {
       return VerificationResult.fromJson({
         'accepted': false,
         'reason':
             'AI doğrulama servisi yapılandırılmamış. GEMINI_API_KEY bulunamadı.',
       });
     }
+
+    // ... (metodun geri kalan kısmı aynı şekilde devam eder)
 
     const prompt = '''
 Bu fotoğrafı çevre temizliği görevi açısından değerlendir.
@@ -62,28 +83,17 @@ Yalnızca aşağıdaki JSON formatında cevap ver:
 
         if (image.width > 768 || image.height > 768) {
           if (image.width >= image.height) {
-            resized = img.copyResize(
-              image,
-              width: 768,
-            );
+            resized = img.copyResize(image, width: 768);
           } else {
-            resized = img.copyResize(
-              image,
-              height: 768,
-            );
+            resized = img.copyResize(image, height: 768);
           }
         }
 
         optimizedBytes = Uint8List.fromList(
-          img.encodeJpg(
-            resized,
-            quality: 75,
-          ),
+          img.encodeJpg(resized, quality: 75),
         );
 
-        debugPrint(
-          'Image optimized: ${optimizedBytes.length} bytes',
-        );
+        debugPrint('Image optimized: ${optimizedBytes.length} bytes');
       }
     } catch (e) {
       debugPrint('Image optimization error: $e');
@@ -91,13 +101,11 @@ Yalnızca aşağıdaki JSON formatında cevap ver:
 
     for (final modelName in _modelsToTry) {
       try {
-        debugPrint(
-          'Trying Gemini model: $modelName',
-        );
+        debugPrint('Trying Gemini model: $modelName');
 
         final model = GenerativeModel(
           model: modelName,
-          apiKey: _apiKey,
+          apiKey: apiKey,
           generationConfig: GenerationConfig(
             temperature: 0.1,
             responseMimeType: 'application/json',
@@ -108,44 +116,27 @@ Yalnızca aşağıdaki JSON formatında cevap ver:
             .generateContent([
               Content.multi([
                 TextPart(prompt),
-                DataPart(
-                  'image/jpeg',
-                  optimizedBytes,
-                ),
+                DataPart('image/jpeg', optimizedBytes),
               ]),
             ])
-            .timeout(
-              const Duration(seconds: 12),
-            );
+            .timeout(const Duration(seconds: 12));
 
         final responseText = response.text;
 
-        if (responseText == null ||
-            responseText.trim().isEmpty) {
-          throw Exception(
-            'Model boş yanıt döndürdü.',
-          );
+        if (responseText == null || responseText.trim().isEmpty) {
+          throw Exception('Model boş yanıt döndürdü.');
         }
 
         var cleanedJson = responseText.trim();
 
         if (cleanedJson.startsWith('```json')) {
-          cleanedJson = cleanedJson
-              .substring(7)
-              .trim();
+          cleanedJson = cleanedJson.substring(7).trim();
         } else if (cleanedJson.startsWith('```')) {
-          cleanedJson = cleanedJson
-              .substring(3)
-              .trim();
+          cleanedJson = cleanedJson.substring(3).trim();
         }
 
         if (cleanedJson.endsWith('```')) {
-          cleanedJson = cleanedJson
-              .substring(
-                0,
-                cleanedJson.length - 3,
-              )
-              .trim();
+          cleanedJson = cleanedJson.substring(0, cleanedJson.length - 3).trim();
         }
 
         final decoded = jsonDecode(cleanedJson);
@@ -157,18 +148,12 @@ Yalnızca aşağıdaki JSON formatında cevap ver:
         }
 
         if (decoded['accepted'] is! bool) {
-          throw const FormatException(
-            'accepted alanı bool değil.',
-          );
+          throw const FormatException('accepted alanı bool değil.');
         }
 
-        return VerificationResult.fromJson(
-          decoded,
-        );
+        return VerificationResult.fromJson(decoded);
       } catch (e) {
-        debugPrint(
-          'Gemini error ($modelName): $e',
-        );
+        debugPrint('Gemini error ($modelName): $e');
       }
     }
 

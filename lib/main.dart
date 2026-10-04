@@ -486,7 +486,19 @@ class _StoryScreenState extends State<StoryScreen>
         (current == Scene.firstResult && story.firstCollected >= 10);
 
     // Mevcut kayıt sistemi + Chapter 1 içi fark bulmaca checkpoint'i.
+    // Puzzle ekranı açıldığında kaydedilecek checkpoint:
+    if (current == Scene.fishPuzzle) {
+      savedChapter = StoryController.fishPuzzleCheckpoint;
 
+      saveQueue = saveQueue
+          .then((_) async {
+            await widget.prefs?.setInt(
+              'chapter',
+              StoryController.fishPuzzleCheckpoint,
+            );
+          })
+          .catchError((Object _) {});
+    }
     if (current == Scene.intro ||
         current == Scene.underwater ||
         current == Scene.fishing ||
@@ -865,18 +877,15 @@ class _StoryScreenState extends State<StoryScreen>
                             child: Column(
                               children: [
                                 if (story.scene != Scene.photo &&
-                                    story.scene != Scene.impactMap &&
-                                    story.scene != Scene.fishPuzzle)
+                                    story.scene != Scene.impactMap)
                                   header(),
-
                                 if (!atHome &&
                                     story.scene != Scene.rewind &&
                                     story.scene != Scene.prevention &&
                                     story.scene != Scene.success &&
                                     story.scene != Scene.reward &&
                                     story.scene != Scene.photo &&
-                                    story.scene != Scene.impactMap &&
-                                    story.scene != Scene.fishPuzzle)
+                                    story.scene != Scene.impactMap)
                                   chapterBar(),
 
                                 if (story.scene == Scene.intro ||
@@ -1020,7 +1029,7 @@ class _StoryScreenState extends State<StoryScreen>
 
         const SizedBox(width: 6),
 
-        if (!atHome && story.scene != Scene.cleanupFirst)
+        if (!atHome)
           circleButton(Icons.pause_rounded, tr('header.pause'), pauseMenu),
       ],
     ),
@@ -1520,16 +1529,17 @@ class _StoryScreenState extends State<StoryScreen>
     ),
 
     Scene.discovery => storyCard(
-      tr('chapter3.discovery.title'),
-
-      tr('chapter3.discovery.body'),
-
-      tr('chapter3.discovery.button'),
-
+      AppLocalizations.instance.isTurkish
+          ? 'Gölün Parçalarını Birleştir!'
+          : 'Piece the Lake Together!',
+      AppLocalizations.instance.isTurkish
+          ? 'Balığın midesindeki mikroplastikleri inceledik. Şimdi Küçükçekmece Gölü\'nü yeniden canlandırmak ve bir bütün haline getirmek için yapboz parçalarını doğru yerlere yerleştir!'
+          : 'We examined the microplastics inside the fish. Now place the puzzle pieces to bring Lake Küçükçekmece back together!',
+      AppLocalizations.instance.isTurkish ? 'Bulmacaya Başla' : 'Start Puzzle',
       () => next(Scene.fishPuzzle),
-
-      eyebrow: tr('chapter3.discovery.eyebrow'),
-
+      eyebrow: AppLocalizations.instance.isTurkish
+          ? 'GÖL BULMACASI'
+          : 'LAKE PUZZLE',
       bookPage: 3,
     ),
 
