@@ -151,7 +151,11 @@ class _ChapterOneDifferenceGameState extends State<ChapterOneDifferenceGame> {
 
   // CH2 müziği belirlenene kadar bulmacadan sonra menü müziği çalar.
   void _finishPuzzle() {
-    AudioManager.instance.playBGM('ana_menu_bg.mp3');
+    AudioManager.instance.playJingleThenBGM(
+      'mikroplastik_sonu.mp3',
+      'ana_menu_bg.mp3',
+    );
+
     widget.onComplete();
   }
 

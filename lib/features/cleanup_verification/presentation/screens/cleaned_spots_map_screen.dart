@@ -7,7 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import '../../services/water_source_service.dart';
 import '../../services/local_database_service.dart';
 import '../../../../localization/app_localizations.dart';
-
+import '../../../../audio_manager.dart';
 
 class CleanedSpotsMapScreen extends StatefulWidget {
   final double? initialLat;
@@ -39,9 +39,16 @@ class _CleanedSpotsMapScreenState extends State<CleanedSpotsMapScreen> {
 
   bool get _isTr => AppLocalizations.instance.isTurkish;
 
+  void _playButtonClick() {
+    AudioManager.instance.playEffect('bubble_button_click.mp3');
+  }
+
   @override
   void initState() {
     super.initState();
+
+    AudioManager.instance.playBGM('chapter_hikaye_bg.mp3');
+
     _activePendingSource = widget.pendingSource;
     _initMapCenterAndSpots();
   }
@@ -147,7 +154,10 @@ class _CleanedSpotsMapScreenState extends State<CleanedSpotsMapScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(c),
+            onPressed: () {
+              _playButtonClick();
+              Navigator.pop(c);
+            },
             child: Text(
               _isTr ? "Tamam" : "OK",
               style: const TextStyle(
@@ -312,7 +322,10 @@ class _CleanedSpotsMapScreenState extends State<CleanedSpotsMapScreen> {
                                             height: 60,
                                             alignment: const Alignment(0, -1),
                                             child: GestureDetector(
-                                              onTap: () => _showEntry(e),
+                                              onTap: () {
+                                                _playButtonClick();
+                                                _showEntry(e);
+                                              },
                                               child: Column(
                                                 mainAxisSize: MainAxisSize.min,
                                                 children: [
@@ -439,7 +452,10 @@ class _CleanedSpotsMapScreenState extends State<CleanedSpotsMapScreen> {
                                       ),
                                       onPressed: _isSaving
                                           ? null
-                                          : _handleConfirmSpot,
+                                          : () {
+                                              _playButtonClick();
+                                              _handleConfirmSpot();
+                                            },
                                     ),
                                   ),
                                 )
@@ -483,6 +499,7 @@ class _CleanedSpotsMapScreenState extends State<CleanedSpotsMapScreen> {
                                         ),
                                       ),
                                       onPressed: () {
+                                        _playButtonClick();
                                         if (widget.onBack != null) {
                                           widget.onBack!();
                                         } else {
@@ -499,11 +516,15 @@ class _CleanedSpotsMapScreenState extends State<CleanedSpotsMapScreen> {
                                 ),
                                 child: Center(
                                   child: TextButton(
-                                    onPressed: () => launchUrl(
-                                      Uri.parse(
-                                        'https://www.openstreetmap.org/copyright',
-                                      ),
-                                    ),
+                                    onPressed: () {
+                                      _playButtonClick();
+
+                                      launchUrl(
+                                        Uri.parse(
+                                          'https://www.openstreetmap.org/copyright',
+                                        ),
+                                      );
+                                    },
                                     child: const Text(
                                       '© OpenStreetMap contributors',
                                       style: TextStyle(fontSize: 10),

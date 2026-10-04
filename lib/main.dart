@@ -392,15 +392,7 @@ class _StoryScreenState extends State<StoryScreen>
   // CH2 sahneleri burada yok: hikâye/oyun müziği onStory'de, iyileştirme
   // müziği ChapterTwoHealingGame'de ayarlanır. CH3 balık tutma, çöp ara
   // ekranı ve iz bulma da yok: ch3_balik_tutma_bg bunlar boyunca sürer.
-  static const _silentScenes = {
-    Scene.discovery,
-
-    Scene.rewind,
-
-    Scene.prevention,
-
-    Scene.success,
-  };
+  static const _silentScenes = {Scene.rewind, Scene.prevention, Scene.success};
 
   String _differenceSignature() {
     final values = story.differenceFound.toList()..sort();
@@ -455,7 +447,7 @@ class _StoryScreenState extends State<StoryScreen>
 
     // Ana menüye her dönüşte menü müziği.
 
-    if (current == Scene.home) {
+    if (current == Scene.home || current == Scene.discovery) {
       AudioManager.instance.playBGM('ana_menu_bg.mp3');
     }
 
@@ -1063,6 +1055,8 @@ class _StoryScreenState extends State<StoryScreen>
 
   Future<void> openSettings() async {
     final audio = AudioManager.instance;
+
+    audio.playEffect('bubble_button_click.mp3');
 
     await showDialog<void>(
       context: context,
@@ -2216,7 +2210,11 @@ class _StoryScreenState extends State<StoryScreen>
 
                 const SizedBox(height: 14),
 
-                StoryButton(button, onPressed: action),
+                StoryButton(
+                  button,
+                  onPressed: action,
+                  sound: TapDownButton.clickSound,
+                ),
               ],
             ),
           ),
