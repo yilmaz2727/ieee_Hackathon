@@ -720,30 +720,32 @@ class StoryController extends ChangeNotifier {
   // -------------------------------------------------
 
   void fishingAction() {
-    if (scene != Scene.fishing || paused || !cast) {
-      return;
-    }
-
-    if (bite) {
-      biteVibrationClock = 0; // Balık çekildiğinde titreşim dursun
-      catches++;
-      // İlk iki yakalama çöp; üçüncü yakalama balık.
-      if (catches >= 3) {
-        HapticFeedback.vibrate();
-      }
-      if (catches <= 2) {
-        waterClarity[2] = catches / 2;
-      }
-
-      go(catches < 3 ? Scene.catchWaste : Scene.inspection);
-
-      return;
-    }
-
-    fishingHint = tr('story.fishing.tooEarly');
-
-    notifyListeners();
+  if (scene != Scene.fishing || paused || !cast) {
+    return;
   }
+
+  if (bite) {
+    biteVibrationClock = 0;
+    reeling = false;
+    catches++;
+
+    if (catches <= 2) {
+      waterClarity[2] = catches / 2;
+
+      AudioManager.instance.playEffect('cop_tuttu.mp3');
+    } else {
+      HapticFeedback.vibrate();
+
+      AudioManager.instance.playEffect('balik_tuttu.mp3');
+    }
+
+    go(catches < 3 ? Scene.catchWaste : Scene.inspection);
+    return;
+  }
+
+  fishingHint = tr('story.fishing.tooEarly');
+  notifyListeners();
+}
 
   // -------------------------------------------------
   // OYUN DÖNGÜSÜ
