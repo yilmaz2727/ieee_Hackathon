@@ -1,100 +1,218 @@
-# Güncelleme: Pipetin Yolculuğu v1.1
+# Guardian of the Water
 
-Yeni özellikler ve başlatma: `GUNCELLEME_v2.md`. Doğrulama sınırları: `VALIDATION.md`.
+### The Straw’s Journey · Suyun Koruyucusu — Pipetin Yolculuğu
 
-# Esma: Suyun Koruyucusu
+**Discover the problem. Protect aquatic life. Turn learning into action.**
 
-Flutter + Flame ile geliştirilen, resimli ve üç bölümlük çevre eğitimi oyunu. Türkçe arayüz, fare/dokunma etkileşimi, dedesinin kitabı, yeniden deneme ve fotoğraflı kişisel katkı haritası içerir.
+An interactive environmental education game by **Team Moon**, developed for the **OneAquaHealth IEEE Global Hackathon 2026**.
 
-## Hızlı başlatma (Windows / VS Code)
+Guardian of the Water follows the story of a discarded straw through three water settings in Türkiye. Through illustrated storytelling, hands-on mini-games, everyday choices, and an optional real-world cleanup mission, it helps young players explore how their actions connect to aquatic ecosystems.
 
-1. ZIP'i bir klasöre çıkar ve `esma_game` klasörünü VS Code ile aç.
-2. Terminalde çalıştır:
+**Built with Flutter and Flame · Turkish and English interfaces · Web and Android targets**
 
-```sh
+## Why this project exists
+
+A piece of litter can leave our sight without leaving the environment. For children, the connection between a discarded object, pollution in water, and its consequences for living things can be difficult to see.
+
+Our game makes that connection tangible. Players sort waste, identify pollution sources, protect fish from microplastics, and choose ways to prevent litter from reaching water. An optional cleanup mission then connects the learning experience to participation beyond the screen.
+
+The intended audience is children and young learners, with opportunities for guided use by educators and families. Learning outcomes and long-term behavior change remain goals to evaluate through user studies.
+
+## OneAquaHealth alignment
+
+The project is designed around **Awareness & Storytelling**, supported by community and gamification mechanics.
+
+It introduces the **One Health** perspective: environmental conditions, animal health, and human well-being are connected. The story focuses on pollution prevention and aquatic life, while the real-world mission encourages participation in caring for shared water environments.
+
+The experience follows four stages:
+
+| Stage | Player experience | Intended learning outcome |
+| --- | --- | --- |
+| Notice | Compare clean and polluted scenes | Recognize sources of water pollution |
+| Understand | Follow plastic fragmentation and protect fish | Connect discarded waste with risks to aquatic life |
+| Choose | Respond to everyday environmental scenarios | Practice preventing waste before it reaches water |
+| Participate | Complete an optional cleanup mission | Connect environmental learning with responsible action |
+
+## Explore the journey
+
+### Chapter 1 — Şamlar Nature Park
+
+Sort incoming waste into plastic, metal, and paper bins. Then compare two scenes and find five differences linked to pollution sources.
+
+**Learning focus:** waste separation, observation, and the ways litter and other pollutants can reach water.
+
+### Chapter 2 — Sazlıdere Reservoir
+
+Guide a fish away from microplastic particles, then find five distressed fish and help them through a symbolic recovery activity. Grandpa’s illustrated book connects the mini-games to the story of plastic breaking into smaller pieces over time.
+
+**Learning focus:** plastic fragmentation, aquatic life, and empathy for affected animals.
+
+### Chapter 3 — Küçükçekmece
+
+Cast a fishing line, encounter discarded waste, and explore a stylized inspection scene that makes otherwise hard-to-see pollution visible.
+
+**Learning focus:** the difference between visible litter and less visible pollution.
+
+### Change the ending
+
+Make five everyday choices about preventing litter and complete a nine-piece picture puzzle. Scores, badges, and downloadable achievement certificates recognize progress through the experience.
+
+**Learning focus:** applying the story’s lessons to daily decisions.
+
+### Take action beyond the game
+
+The optional real-world mission combines:
+
+1. Device location and a nearby water-source lookup.
+2. A cleanup-related photo captured or selected by the player.
+3. AI-assisted assessment of visible cleanup evidence.
+4. A contribution marker saved to the local map after approval and confirmation.
+5. An achievement reward linked to the completed mission.
+
+Players can also continue without submitting a photo. Children should undertake real-world activities with adult supervision, stay out of the water, and avoid sharp or unknown waste.
+
+## Key features
+
+- **Story-driven progression:** an illustrated book connects the activities across three locations.
+- **Varied interactions:** drag-and-drop sorting, spot-the-difference, fish protection, symbolic recovery, fishing, quizzes, and a picture puzzle.
+- **Bilingual interface:** Turkish and English translations with an in-app language selector.
+- **Audio experience:** background music, sound effects, and adjustable music volume.
+- **Player progression:** local profiles, scores, badges, and a local leaderboard.
+- **Achievement certificates:** downloadable PDF certificates with Turkish and English options.
+- **Real-world participation:** location lookup, AI-assisted photo assessment, and a local contribution map.
+
+## Technical overview
+
+| Component | Implementation |
+| --- | --- |
+| Application and interface | Flutter / Dart |
+| Game rendering and interactions | Flutter widgets, custom drawing, and Flame |
+| Shared game state | `StoryController` |
+| Photo assessment | Gemini through `google_generative_ai` |
+| Device location | `geolocator` |
+| Water-source lookup | OpenStreetMap data through the Overpass API |
+| Map rendering | `flutter_map` and OpenStreetMap tiles |
+| Local persistence | `shared_preferences` and browser local storage |
+| Audio | `audioplayers` |
+| PDF generation | `pdf` and `printing` |
+| Localization | JSON translations in `assets/i18n/` |
+
+Game chapters and the real-world mission are organized into separate feature modules. The app shell manages navigation, shared services handle persistence and rewards, and the story controller coordinates game progress.
+
+### How photo assessment works
+
+The application optimizes the selected image and sends it to Gemini with criteria for visible cleanup evidence. The service requests a structured acceptance decision and a short explanation. An unsuccessful API request does not automatically approve the mission.
+
+This is **AI-assisted evidence screening**, not proof of who performed a cleanup, when it happened, or whether the image was captured at the reported location. Device location and photo assessment are separate checks.
+
+## Run locally
+
+### Prerequisites
+
+- Flutter SDK with a Dart version compatible with `>=3.8.0 <4.0.0`.
+- Chrome for the web target, or an Android SDK and an Android device/emulator.
+- Internet access for dependency installation, map services, water-source lookup, and AI assessment.
+- A Gemini API key with access to a model supported by your account, if testing photo assessment.
+
+### 1. Open the project
+
+Clone or download this repository and open the directory containing `pubspec.yaml`.
+
+### 2. Configure the local environment
+
+Create a `.env` file in the project root:
+
+```dotenv
+GEMINI_API_KEY=your_api_key_here
+```
+
+The current project declares `.env` as an asset, so create the file before running the app. If you are only exploring the game, leave the value empty; AI photo approval will remain unavailable.
+
+Model identifiers are configured in:
+
+```text
+lib/features/cleanup_verification/data/services/gemini_vision_service.dart
+```
+
+Check that the configured models are available to your API account before demonstrating this feature.
+
+**API key handling:** keep `.env` out of version control. The prototype currently loads the key from a client asset; this does not protect the key in a distributed build. Public deployment should route AI requests through a server that holds the credentials.
+
+### 3. Install dependencies and launch
+
+```bash
 flutter pub get
 flutter run -d chrome
 ```
 
-Android cihaz için:
+For Android, list available devices and use the desired device ID:
 
-```sh
+```bash
 flutter devices
-flutter run -d CIHAZ_KIMLIGI
+flutter run -d <device-id>
 ```
 
-Derleme:
+Allow location access when testing the real-world mission. Browser geolocation requires a secure context such as localhost or HTTPS.
 
-```sh
-flutter build web --release --no-web-resources-cdn
+### Build
+
+```bash
+# Web
+flutter build web --release
+
+# Android
 flutter build apk --release
 ```
 
-Flutter 3.41.6 / Dart 3.11.4 geliştirme ortamı hedeflenmiştir. İlk paket indirmesi ve harita zemini internet gerektirir. Android için yerel Android SDK kurulumu gereklidir. iOS platform dosyaları bu pakette yer almaz; macOS ve Xcode üzerinde `flutter create --platforms=ios .` ile eklenebilir.
+### Development checks
 
-## Oyun akışı
-
-1. **Şamlar Tabiat Parkı / Chapter 1:** 20 saniye boyunca kıyıya yaklaşan atıkları plastik, metal ve kâğıt kutularına sürükle. En az 10 doğru atık toplanmadan sonraki bölüme geçilemez.
-2. **Sazlıdere Barajı / Chapter 2:** 30 saniye boyunca balığı mikroplastiklerden kaçır. Balığı geçen parçalar aşağıdaki toplama ağına ulaşır ve ağda birikir; yutulan mikroplastikler ayrıca sayılır.
-3. **Küçükçekmece Gölü / Chapter 3:** Su üzerinde seçtiğin noktaya oltayı at, doğru anda çek ve ardından eğitsel inceleme ekranındaki üç mikroplastik izini keşfet.
-4. **Hikâyeyi Değiştir finali:** Günlük hayattan 5 kısa senaryoda doğa dostu seçimi yap. Final ekranı; 5 soruluk seçim puanını, Chapter 1'de toplanan atık sayısını ve Chapter 2'de balığın kurtulduğu mikroplastik sayısını ayrı ayrı gösterir.
-
-Finalden sonra güvenli bir kıyıda yaptığın gerçek temizliğin fotoğrafını seçebilir, temizlik noktasını haritada işaretleyebilir ve yer adını yazabilirsin. Kayıt katkı haritasında görünür. Sonrasında isteğe bağlı ad/takma ad ile PDF başarı belgesi indirilebilir.
-
-## Dedesinin kitabı
-
-Üstteki kitap düğmesi ilgili aşamalarla açılan beş resimli sayfayı gösterir. Kitap ve duraklatma menüsü açıldığında oyun durur. Kaynaklar `SOURCES.md` dosyasında listelenmiştir.
-
-## Gerçek dünya kaydı: kapsam ve gizlilik
-
-- Fotoğraf ve konum **bu cihazın uygulama/tarayıcı deposuna** kaydedilir. Çevrimiçi topluluk sunucusuna yüklenmez.
-- Harita zemini OpenStreetMap'ten gelir; harita görünümü için ağ bağlantısı gerekir. OSM'ye fotoğraf gönderilmez.
-- Temizlik konumunu kullanıcı haritaya dokunarak seçer. GPS izni veya fotoğrafın konum bilgisi kullanılmaz.
-- Görsel boyutlandırılır ve EXIF/GPS metaverisi taşınmadan yeniden kodlanır.
-- Kayıt bir **kullanıcı beyanıdır**; temizliğin gerçekleştiğini otomatik doğrulamaz.
-- Tarayıcı verilerinin silinmesi yerel ilerlemeyi ve katkı kayıtlarını da siler. Bu bir bulut yedeği değildir.
-- Kayıtlar haritadan silinebilir. Yerel fotoğraf arşivi için yaklaşık 2,8 MB toplam JSON sınırı vardır; kapasite dolduğunda mevcut kayıtlar sessizce silinmez.
-- Fotoğraf finalinde çocuklara bir yetişkinle çalışma, suya girmeme ve kesici/bilinmeyen atıklara dokunmama açıklaması gösterilir.
-- İsim yalnızca cihazda PDF oluşturmak için kullanılır; kayda veya sunucuya gönderilmez.
-
-Ortak çevrimiçi harita istenirse kimlik doğrulama, erişim kuralları, moderasyon, silme ve depolama politikaları olan ayrı bir sunucu katmanı eklenmelidir. Bu pakette varmış gibi gösterilen bir bulut servisi yoktur.
-
-## Bilimsel anlatım sınırları
-
-- Üç konum **üç su durağıdır**; üç ayrı tatlı su kaynağı olarak etiketlenmez. Küçükçekmece bir lagündür; Şamlar ise park ve baraj gölü çevresidir.
-- Plastik çözünüp kayboluyormuş gibi anlatılmaz; küçük parçalara ayrılma ve zaman atlaması kullanılır.
-- Sazlıdere'deki balığın fiziksel olarak Küçükçekmece'ye gittiği iddia edilmez. İki durakta farklı örneklerle öğrenme sürer.
-- Röntgen ekranı stilize, büyütülmüş eğitsel canlandırmadır. Gerçek röntgenle mikroplastik tespiti iddiası değildir.
-- Görseller temsili olarak üretildi; gerçek konumların ölçülü rekonstrüksiyonu değildir.
-- Sayaçlar ve puanlar simülasyondur, bilimsel çevre ölçümü değildir.
-- Belge oyun içi başarı belgesidir; resmî IEEE sertifikası değildir.
-
-## Proje yapısı
-
-Proje feature-oriented bir yapıya ayrılmıştır. `main.dart` yalnızca uygulama kabuğunu ve sahne geçişlerini yönetir; bölüm oyunları kendi feature klasörlerinde bulunur.
-
-- `lib/main.dart`: Uygulama kabuğu, sahne yönlendirme, ana sayfa ve genel akış.
-- `lib/game/story_controller.dart`: Ortak oyun durumu, sayaçlar ve bölümler arası ilerleme.
-- `lib/game/lake_game.dart`: Flame tabanlı göl/olta çizimleri ve animasyonlar.
-- `lib/features/chapters/chapter_one/chapter_one.dart`: Chapter 1 giriş ekranı ve atık toplama oyunu.
-- `lib/features/chapters/chapter_two/chapter_two.dart`: Chapter 2 giriş ekranı ve mikroplastikten kaçınma oyunu.
-- `lib/features/chapters/chapter_three/chapter_three.dart`: Chapter 3 olta ve inceleme ekranları.
-- `lib/features/final_challenge/`: 5 senaryolu doğa dostu seçim oyunu ve final skor ekranı.
-- `lib/features/book/book_sheet.dart`: Dedemin Doğa Kitabı.
-- `lib/features/impact/impact_screen.dart`: Fotoğraf seçimi, konum işaretleme ve katkı haritası.
-- `lib/services/`: Kalıcı veri ve PDF/sertifika servisleri.
-- `lib/ui/widgets.dart`: Bölümler arasında paylaşılan görsel bileşenler.
-- `lib/ui/water_scene.dart`: Ortak su ve arka plan katmanı.
-- `assets/`: Görseller ve fontlar.
-- `test/`: Oyun kuralları ve servis testleri.
-
-Detaylı klasör şeması için `PROJECT_STRUCTURE.md` dosyasına bakabilirsin.
-
-## Kontroller
-
-```sh
+```bash
 flutter analyze
 flutter test
 ```
 
-Testler 45 saniyelik akışı simüle eder; normal oyunun sürelerini değiştirmez. Son doğrulama durumunu `VALIDATION.md` dosyasında bulabilirsin.
+The repository includes tests for areas such as story state, sorting, fish recovery, the picture puzzle, localization, certificates, and local contribution storage. Run these checks against the version you intend to submit; this README does not assert a current passing result.
+
+## Project structure
+
+| Path | Responsibility |
+| --- | --- |
+| `lib/main.dart` | App shell and scene navigation |
+| `lib/game/` | Shared story state and game components |
+| `lib/features/chapters/` | Chapter gameplay and learning activities |
+| `lib/features/book/` | Illustrated storybook |
+| `lib/features/final_challenge/` | Everyday choices and completion screens |
+| `lib/features/impact/` | Picture puzzle and impact-related screens |
+| `lib/features/cleanup_verification/` | Real-world mission, AI assessment, location, map, and leaderboard |
+| `lib/features/auth/` | Local player onboarding |
+| `lib/services/` | Rewards, certificates, and supporting services |
+| `lib/localization/` | Translation loading |
+| `assets/` | Illustrations, audio, fonts, and translations |
+| `test/` | Automated tests |
+
+## Prototype scope and data handling
+
+- **Local records:** profiles, scores, leaderboard entries, and contribution markers are stored on the current device/browser. They are not synchronized between devices or shared through an online community backend.
+- **External services:** photo assessment sends the selected image to Gemini; water-source lookup sends coordinates to Overpass; the map requests OpenStreetMap tiles. These features require connectivity.
+- **Local progress is not a cloud backup:** clearing application or browser data can remove saved records.
+- **Location precision:** the current water-source query searches within 10 km, while some messages still refer to 100 m. This inconsistency must be resolved before claiming precise proximity verification.
+- **Educational simulation:** fish recovery and the inspection view are symbolic teaching activities, not treatment or diagnostic tools. Game scores are not measurements of environmental quality.
+- **Geographic storytelling:** locations, scale, and time are used illustratively. The chapters do not claim a continuous real-world flow route; Küçükçekmece is a lagoon setting.
+- **Achievement recognition:** downloadable certificates acknowledge in-game progress; they are not official IEEE certificates.
+
+## Next steps
+
+1. **Pilot with learners and educators:** evaluate usability, comprehension, and age-appropriate presentation.
+2. **Measure learning:** compare pre/post activity responses and track mission completion without treating game scores as proof of real-world impact.
+3. **Build a shared backend:** introduce authenticated accounts, synchronized contribution records, and community leaderboards.
+4. **Strengthen participation safeguards:** add moderation, clearer consent flows, and controls suited to young users.
+5. **Harden external integrations:** move AI credentials server-side, align location thresholds and messages, and improve evidence review.
+6. **Expand educational content:** add water settings, languages, and teacher-guided activities based on pilot feedback.
+
+## Team and acknowledgments
+
+Created by **Team Moon** for the **OneAquaHealth IEEE Global Hackathon 2026**.
+
+Built using Flutter, Flame, Gemini, and the OpenStreetMap ecosystem. Map data is credited to [OpenStreetMap contributors](https://www.openstreetmap.org/copyright). See [SOURCES.md](SOURCES.md) for the repository’s educational references.
+
+**Every piece of litter has a journey. Every player can help change its ending.**
