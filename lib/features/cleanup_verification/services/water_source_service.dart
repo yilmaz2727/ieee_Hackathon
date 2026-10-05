@@ -46,15 +46,13 @@ class WaterSourceCheckResult {
 }
 
 class WaterSourceService {
-  static const int searchRadiusMeters = 10000;
+  static const int searchRadiusMeters = 100;
 
-  static const String _overpassUrl =
-      'https://overpass-api.de/api/interpreter';
+  static const String _overpassUrl = 'https://overpass-api.de/api/interpreter';
 
   /// Telefonun mevcut konumunu alır.
   Future<Position> getCurrentPosition() async {
-    final serviceEnabled =
-        await Geolocator.isLocationServiceEnabled();
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
 
     if (!serviceEnabled) {
       throw Exception(
@@ -62,17 +60,14 @@ class WaterSourceService {
       );
     }
 
-    LocationPermission permission =
-        await Geolocator.checkPermission();
+    LocationPermission permission = await Geolocator.checkPermission();
 
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
     }
 
     if (permission == LocationPermission.denied) {
-      throw Exception(
-        'Konum izni verilmedi.',
-      );
+      throw Exception('Konum izni verilmedi.');
     }
 
     if (permission == LocationPermission.deniedForever) {
@@ -99,9 +94,9 @@ class WaterSourceService {
 
     // 100 metre kontrolü yapacağımız için
     // aşırı hatalı GPS verisini kabul etmiyoruz.
-if (position.accuracy > 150) {
-  throw LocationAccuracyException(position.accuracy);
-}
+    if (position.accuracy > 150) {
+      throw LocationAccuracyException(position.accuracy);
+    }
 
     return position;
   }
@@ -114,7 +109,8 @@ if (position.accuracy > 150) {
     final lat = position.latitude;
     final lon = position.longitude;
 
-    final query = '''
+    final query =
+        '''
 [out:json][timeout:15];
 (
   node(around:$searchRadiusMeters,$lat,$lon)
@@ -148,16 +144,11 @@ out tags center;
         .post(
           Uri.parse(_overpassUrl),
           headers: const {
-            'Content-Type':
-                'application/x-www-form-urlencoded; charset=UTF-8',
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
           },
-          body: {
-            'data': query,
-          },
+          body: {'data': query},
         )
-        .timeout(
-          const Duration(seconds: 20),
-        );
+        .timeout(const Duration(seconds: 20));
 
     if (response.statusCode != 200) {
       throw Exception(
@@ -169,9 +160,7 @@ out tags center;
     final decoded = jsonDecode(response.body);
 
     if (decoded is! Map<String, dynamic>) {
-      throw Exception(
-        'Su kaynağı servisinden geçersiz cevap alındı.',
-      );
+      throw Exception('Su kaynağı servisinden geçersiz cevap alındı.');
     }
 
     final elements = decoded['elements'];
@@ -179,8 +168,7 @@ out tags center;
     if (elements is! List || elements.isEmpty) {
       return const WaterSourceCheckResult(
         found: false,
-        message:
-            '100 metre çevrenizde uygun bir tatlı su kaynağı bulunamadı.',
+        message: '100 metre çevrenizde uygun bir tatlı su kaynağı bulunamadı.',
       );
     }
 
@@ -195,8 +183,7 @@ out tags center;
         continue;
       }
 
-      final tags =
-          Map<String, dynamic>.from(rawTags);
+      final tags = Map<String, dynamic>.from(rawTags);
 
       if (!_isAcceptedWaterSource(tags)) {
         continue;
@@ -211,36 +198,27 @@ out tags center;
         type: type,
         latitude: lat,
         longitude: lon,
-        message:
-            name != null && name.trim().isNotEmpty
-                ? '$name yakınınızda bulundu.'
-                : '100 metre içinde $type bulundu.',
+        message: name != null && name.trim().isNotEmpty
+            ? '$name yakınınızda bulundu.'
+            : '100 metre içinde $type bulundu.',
       );
     }
 
     return const WaterSourceCheckResult(
       found: false,
-      message:
-          '100 metre çevrenizde uygun bir tatlı su kaynağı bulunamadı.',
+      message: '100 metre çevrenizde uygun bir tatlı su kaynağı bulunamadı.',
     );
   }
 
-  bool _isAcceptedWaterSource(
-    Map<String, dynamic> tags,
-  ) {
+  bool _isAcceptedWaterSource(Map<String, dynamic> tags) {
     final natural = tags['natural']?.toString();
     final waterway = tags['waterway']?.toString();
     final water = tags['water']?.toString();
 
     // Kesinlikle kabul etmek istemediğimiz yapay alanlar.
-    const rejectedWaterTypes = {
-      'swimming_pool',
-      'wastewater',
-      'sewage',
-    };
+    const rejectedWaterTypes = {'swimming_pool', 'wastewater', 'sewage'};
 
-    if (water != null &&
-        rejectedWaterTypes.contains(water)) {
+    if (water != null && rejectedWaterTypes.contains(water)) {
       return false;
     }
 
@@ -250,8 +228,7 @@ out tags center;
     }
 
     // Dere veya nehir
-    if (waterway == 'stream' ||
-        waterway == 'river') {
+    if (waterway == 'stream' || waterway == 'river') {
       return true;
     }
 
@@ -263,9 +240,7 @@ out tags center;
     return false;
   }
 
-  String _getWaterType(
-    Map<String, dynamic> tags,
-  ) {
+  String _getWaterType(Map<String, dynamic> tags) {
     final natural = tags['natural']?.toString();
     final waterway = tags['waterway']?.toString();
     final water = tags['water']?.toString();
