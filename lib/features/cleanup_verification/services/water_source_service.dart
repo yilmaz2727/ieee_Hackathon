@@ -94,7 +94,7 @@ class WaterSourceService {
 
     // 100 metre kontrolü yapacağımız için
     // aşırı hatalı GPS verisini kabul etmiyoruz.
-    if (position.accuracy > 150) {
+    if (position.accuracy > 100) {
       throw LocationAccuracyException(position.accuracy);
     }
 
